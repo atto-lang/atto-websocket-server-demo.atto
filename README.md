@@ -17,3 +17,8 @@
 4. Use only source-org or independently approved private CI.
 
 Tracked by private [organization integration registry PR #79](https://github.com/ores-truffle-oreslang/oreslang-platform-conformance/pull/79).
+
+
+## Current runtime blocker
+
+The current Java/Graal HTTP runtime explicitly treats WebSockets as a separate, not-yet-implemented adapter. Runtime work is tracked in [oreslang-source.java #2051](https://github.com/ores-truffle-oreslang/oreslang-source.java/issues/2051). This repository intentionally remains bootstrap-only until that actor-owned bounded transport API exists; a host-only simulator will not be substituted for guest execution.
