@@ -1,6 +1,6 @@
 # Oreslang WebSocket server demo
 
-**Status: empty-demo bootstrap.** No actual WebSocket listener, tested Oreslang guest actor, or deployable server has been committed.
+**Status: empty-demo bootstrap.** The machine-readable state is in [`demo-status.txt`](demo-status.txt), and [`DEMO_CONTRACT.md`](DEMO_CONTRACT.md) is the fail-closed acceptance contract that must be satisfied before this repository can claim executable behavior. No actual WebSocket listener, tested Oreslang guest actor, or deployable server has been committed.
 
 ## Integration contract
 
