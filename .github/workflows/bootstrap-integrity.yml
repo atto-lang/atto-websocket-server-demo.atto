@@ -24,6 +24,14 @@ jobs:
         run: |
           set -euo pipefail
           grep -Fq '**Status: empty-demo bootstrap.**' README.md
+          grep -Fxq 'schema=1' demo-status.txt
+          grep -Fxq 'status=bootstrap-only' demo-status.txt
+          grep -Fxq 'execution=disabled' demo-status.txt
+          grep -Fxq 'network=disabled' demo-status.txt
+          grep -Fxq 'compiler-evidence=none' demo-status.txt
+          grep -Fxq 'production-claim=false' demo-status.txt
+          test -s DEMO_CONTRACT.md
+          grep -Fq 'exact-head' DEMO_CONTRACT.md
 
           executable="$(find . -path './.git' -prune -o -type f \( -name '*.ores' -o -name 'pom.xml' -o -name 'Cargo.toml' -o -name 'package.json' \) -print -quit)"
           if [[ -n "$executable" ]]; then
