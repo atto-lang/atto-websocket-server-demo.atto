@@ -1,0 +1,38 @@
+name: Bootstrap demo integrity
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bootstrap-integrity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Keep the bootstrap status fail-closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq '**Status: empty-demo bootstrap.**' README.md
+
+          executable="$(find . -path './.git' -prune -o -type f \( -name '*.ores' -o -name 'pom.xml' -o -name 'Cargo.toml' -o -name 'package.json' \) -print -quit)"
+          if [[ -n "$executable" ]]; then
+            echo "Executable/demo source exists while README still declares an empty bootstrap: $executable" >&2
+            echo "Replace this bootstrap gate with compiler/runtime tests in the same change that makes the demo executable." >&2
+            exit 1
+          fi
+
+          if grep -R -n -E 'pull_request_target|workflow_run|repository_dispatch' .github/workflows --include='*.yml' --include='*.yaml'; then
+            echo "Privileged/indirect workflow triggers are not allowed in an empty demo bootstrap." >&2
+            exit 1
+          fi
