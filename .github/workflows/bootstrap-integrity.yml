@@ -32,7 +32,8 @@ jobs:
             exit 1
           fi
 
-          if grep -R -n -E 'pull_request_target|workflow_run|repository_dispatch' .github/workflows --include='*.yml' --include='*.yaml'; then
+          forbidden='pull_request_''target|workflow_''run|repository_''dispatch'
+          if grep -R -n -E "$forbidden" .github/workflows --include='*.yml' --include='*.yaml'; then
             echo "Privileged/indirect workflow triggers are not allowed in an empty demo bootstrap." >&2
             exit 1
           fi
