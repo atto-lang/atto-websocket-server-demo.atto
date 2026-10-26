@@ -1,0 +1,6 @@
+schema=1
+status=bootstrap-only
+execution=disabled
+network=disabled
+compiler-evidence=none
+production-claim=false
