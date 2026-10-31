@@ -1,16 +1,27 @@
-# Demo validation gates
+# WebSocket Oreslang-source validation gates
 
-Status snapshot: 2026-10-29. This is an evidence checklist, not a passing test report.
+Status snapshot: 2026-10-31. **SOURCE_AUTHORED / NOT_EXECUTED** is a source inventory state, not an execution receipt.
 
-## Scope
-WebSocket bootstrap.
+## Source inventory (must remain .ores)
 
-## Tests required before promotion
-Implement native actor echo; test handshake, fragmentation, malformed frames, limits and disconnect with pinned compiler.
+- `src/echo_contract.ores`: Oreslang USER echo validation and pure payload echo.
+- `src/echo_actor.ores`: Oreslang `EchoActor` / `ActorMail<String>` receive declaration.
+- `tests/echo_contract_test.ores`: independently imported Oreslang contract test, targets process exit 42.
 
-Record exact demo and compiler commit SHAs, compiler executable SHA-256, backend/target, executed commands, exit/stdout/stderr, CI runner and step-level results. Unrun, skipped and zero-step runs are **NOT_EXECUTED**, never test passes. Include positive/negative scenarios, bounded-resource behavior and cancellation/teardown where applicable.
+Only these three `.ores` sources satisfy the initial authored milestone. Neither Rust structural checks nor host Java probes compile or execute them.
 
-## Limitations
-README-only: no running WebSocket server.
+## Executable evidence required
 
-No production readiness or cross-backend parity is asserted by these documentation changes. Keep native behavior in Oreslang guest source where promised; distinguish host checks from executed guest checks. Do not mirror private Git trees to another organization without explicit approved destination, secure policy and exact-tree provenance.
+1. **Compiler/typechecker:** pin compiler commit, distribution and executable SHA-256, backend/target and exact demo source SHA/tree; compile both contract/test and actor. A rejected actor source is a failure, not a skip or successful placeholder.
+2. **Guest logic:** execute `tests/echo_contract_test.ores` (and the standalone `src/echo_contract.ores`) with the pinned compiler. Demand **exit 42** and record exact stdout/stderr/return status and actual nonzero CI steps. A source text grep or manifest check does not count.
+3. **Guest WebSocket implementation:** implement `WebSocketServer` and opaque `WebSocketConnection` bindings with generation-fenced actor identity, scoped NET permissions, `Future<Result<T,E>>` operations, bounded receive/send, and no raw Socket/Java host-object export. `EchoActor.self.send` currently targets actor output, **not** a WebSocket peer.
+4. **RFC6455 wire:** compile and run a native `.ores` echo actor connected to a real local peer. Verify upgrade negotiation, masked frames, fragmented UTF-8/text, binary payloads, ping/pong, close, malformed frames, size limits, actor STOP/transfer/cancellation, CONTROL priority, and physical loan retirement.
+5. **Backends:** independently prove Java/Graal Native Image and LLVM; then WASM, .NET, and Forge. Do not assert backend parity from one runtime's authored tests.
+
+## Governance and nonclaims
+
+`demo-status.json` reports `source-authored`, `native_guest_present=true`, and all compiler, CI and wire verification flags false. The Rust checker enforces that no unexecuted state can claim production readiness. Structural CI merely checks tracked files and forbidden source extensions; it does not prove .ores type-checking.
+
+The private Oreslang compiler/runtime tree may not be exported to an alternate GitHub org until [Java source issue #1636](https://github.com/ores-truffle-oreslang/oreslang-source.java/issues/1636) is satisfied with enforced source/carrier protection and independent approval. A token-free Git-tree mirror alone does not satisfy the policy.
+
+Promotion requires exact-head nonzero runner steps, executed native Oreslang guests, independent review, and full log/receipt provenance. Never count queued, skipped, runner-null or steps-null GitHub jobs as passing.
