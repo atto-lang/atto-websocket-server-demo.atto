@@ -1,0 +1,33 @@
+// Executable Oreslang guest acceptance target (not yet executed).
+// This test intentionally uses Oreslang imports and Result<T,E>, no Java.
+// Expected process exit: 42. Any compiler failure or unexpected exit fails.
+//
+// This tests message classification and payload limits only. The host adapter
+// must independently prove RFC 6455 masking, fragments, UTF-8 and socket I/O.
+import fnc {allowed_echo_bytes, echo_text} from "../src/echo_contract.ores";
+
+pub fnc main(): int {
+  val text = allowed_echo_bytes(1, 40, 1024);
+  val binary = allowed_echo_bytes(2, 2, 1024);
+  val empty_text = allowed_echo_bytes(1, 0, 1024);
+  val ping = allowed_echo_bytes(9, 0, 1024);
+  val close = allowed_echo_bytes(8, 0, 1024);
+  val fragmented_opcode = allowed_echo_bytes(0, 4, 1024);
+  val oversized = allowed_echo_bytes(2, 1025, 1024);
+  val negative = allowed_echo_bytes(1, -1, 1024);
+  val bad_limit = allowed_echo_bytes(2, 2, 65537);
+
+  if !(text.is_ok() && binary.is_ok() && empty_text.is_ok()); do
+    return 11;
+  fi
+  if ping.is_ok() || close.is_ok() || fragmented_opcode.is_ok(); do
+    return 12;
+  fi
+  if oversized.is_ok() || negative.is_ok() || bad_limit.is_ok(); do
+    return 13;
+  fi
+  if echo_text("native-oreslang-echo") != "native-oreslang-echo"; do
+    return 14;
+  fi
+  return text.unwrap() + binary.unwrap();
+}
