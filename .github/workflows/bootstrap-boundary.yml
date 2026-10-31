@@ -13,15 +13,18 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Require explicit promotion before executable guest source lands
+      - name: Require Oreslang source with strict NOT_EXECUTED provenance
         shell: bash
         run: |
           set -euo pipefail
-          grep -Fq '**Status: empty-demo bootstrap.**' README.md
-          grep -Fq 'No actual WebSocket listener' README.md
+          grep -Fq '**Status: source-authored, NOT_EXECUTED.**' README.md
+          grep -Fq 'No actual WebSocket listener has been executed' README.md
           test -z "$(find . -path ./.git -prune -o -type l -print -quit)"
-          if find . -path ./.git -prune -o -type f -name '*.ores' -print -quit | grep -q .; then
-            echo 'Native guest source was added while README still declares an empty bootstrap.' >&2
-            exit 1
-          fi
-          echo 'BOOTSTRAP_BOUNDARY_PASS; listener and guest execution remain NOT_EXECUTED.'
+          test -f src/echo_contract.ores
+          test -f src/echo_actor.ores
+          grep -Fq 'define actor EchoActor as' src/echo_actor.ores
+          grep -Fq 'pub fnc main(): int' src/echo_contract.ores
+          count="$(git ls-files -- '*.ores' | wc -l | tr -d ' ')"
+          test "$count" = 2
+          test -z "$(git ls-files -- '*.java' '*.class')"
+          echo 'SOURCE_AUTHORED_BOUNDARY_PASS; .ores source exists, compiler and wire execution remain NOT_EXECUTED.'
