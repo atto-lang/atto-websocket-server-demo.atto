@@ -35,12 +35,18 @@ fn forbidden_path(path: &str) -> bool {
 }
 
 fn forbidden_trigger(text: &str) -> bool {
-    text.lines().any(|line| {
-        let s = line.trim_start();
-        ["pull_request_target:", "workflow_run:", "repository_dispatch:", "workflow_call:"]
-            .iter()
-            .any(|event| s.starts_with(event))
-    })
+    // YAML permits both mapping keys and inline event lists, including quoted
+    // event names. Searching only for a leading 'event:' key is bypassable by
+    // 'on: [pull_request_target]' and YAML quoted-key spellings.
+    const DENIED: [&str; 4] = [
+        "pull_request_target", "workflow_run", "repository_dispatch", "workflow_call",
+    ];
+    text.lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .flat_map(|line| {
+            line.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+        })
+        .any(|token| DENIED.contains(&token))
 }
 
 fn checked_git(args: &[&str]) -> Result<Vec<u8>, Box<dyn Error>> {
@@ -167,6 +173,16 @@ mod tests {
         for event in ["pull_request_target:", "workflow_run:", "repository_dispatch:", "workflow_call:"] {
             assert!(forbidden_trigger(&format!("on:\n  {event}\n")));
         }
+        for event in [
+            "on: [pull_request_target, push]",
+            "on: ['workflow_run']",
+            "on: {\"repository_dispatch\": {}}",
+            "on:\n  \"workflow_call\":\n",
+            "on: [ workflow_run ] # inline scalar form",
+        ] {
+            assert!(forbidden_trigger(event), "must reject inline or quoted: {event}");
+        }
         assert!(!forbidden_trigger("on:\n  pull_request:\n  workflow_dispatch:\n"));
+        assert!(!forbidden_trigger("# on: [pull_request_target]\non: push\n"));
     }
 }
