@@ -22,9 +22,10 @@ jobs:
           test -z "$(find . -path ./.git -prune -o -type l -print -quit)"
           test -f src/echo_contract.ores
           test -f src/echo_actor.ores
+          test -f tests/echo_contract_test.ores
           grep -Fq 'define actor EchoActor as' src/echo_actor.ores
           grep -Fq 'pub fnc main(): int' src/echo_contract.ores
           count="$(git ls-files -- '*.ores' | wc -l | tr -d ' ')"
-          test "$count" = 2
+          test "$count" = 3
           test -z "$(git ls-files -- '*.java' '*.class')"
           echo 'SOURCE_AUTHORED_BOUNDARY_PASS; .ores source exists, compiler and wire execution remain NOT_EXECUTED.'
