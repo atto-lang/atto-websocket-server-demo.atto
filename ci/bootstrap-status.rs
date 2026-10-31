@@ -178,7 +178,7 @@ fn validate_claims(fields: &BTreeMap<String, Value>, guest_count: usize) -> Resu
     match fields.get("status") {
         Some(Value::Text(status)) if status == "bootstrap" && !has_guest => Ok(()),
         Some(Value::Text(status)) if status == "source-authored" && has_guest
-            && guest_count >= 2 => Ok(()),
+            && guest_count >= 3 => Ok(()),
         _ => Err("status requires an exact matching unexecuted source maturity tier".into()),
     }
 }
@@ -251,24 +251,25 @@ mod tests {
             .replace(r#""status":"bootstrap""#, r#""status":"source-authored""#)
             .replace(r#""native_guest_present":false"#,
                      r#""native_guest_present":true"#);
-        assert!(validate_claims(&parse_status(&authored).unwrap(), 2).is_ok());
+        assert!(validate_claims(&parse_status(&authored).unwrap(), 3).is_ok());
+        assert!(validate_claims(&parse_status(&authored).unwrap(), 2).is_err());
         assert!(validate_claims(&parse_status(&authored).unwrap(), 0).is_err());
         assert!(validate_claims(&parse_status(&authored).unwrap(), 1).is_err());
         let promoted = authored.replace(
             r#""compiler_execution_verified":false"#,
             r#""compiler_execution_verified":true"#,
         );
-        assert!(validate_claims(&parse_status(&promoted).unwrap(), 2).is_err());
+        assert!(validate_claims(&parse_status(&promoted).unwrap(), 3).is_err());
         let fake_wire = authored.replace(
             r#""network_listener_verified":false"#,
             r#""network_listener_verified":true"#,
         );
-        assert!(validate_claims(&parse_status(&fake_wire).unwrap(), 2).is_err());
+        assert!(validate_claims(&parse_status(&fake_wire).unwrap(), 3).is_err());
         let fake_ci = authored.replace(
             r#""exact_head_ci_verified":false"#,
             r#""exact_head_ci_verified":true"#,
         );
-        assert!(validate_claims(&parse_status(&fake_ci).unwrap(), 2).is_err());
+        assert!(validate_claims(&parse_status(&fake_ci).unwrap(), 3).is_err());
     }
 
     #[test]
