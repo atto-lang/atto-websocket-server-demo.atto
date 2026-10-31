@@ -1,0 +1,40 @@
+# Fail closed. Never downloads or exports the private Oreslang compiler.
+# Runs the real .ores files only on an approved, compiler-preinstalled private runner.
+name: Native Oreslang WebSocket echo source acceptance
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow + '-' + github.ref }}
+  cancel-in-progress: true
+jobs:
+  deny-unapproved:
+    if: ${{ !(github.repository == 'ores-truffle-oreslang/oreslang-websocket-server-demo.ores' && github.event.repository.private == true && vars.ORESLANG_PRIVATE_EPHEMERAL_RUNNER == 'true' && vars.ORESLANG_DEMO_APPROVED_SHA != '' && vars.ORESLANG_DEMO_APPROVED_SHA == (github.event.pull_request.head.sha || github.sha) && vars.ORESLANG_DEMO_APPROVED_TREE != '' && vars.ORESLANG_COMPILER_EXECUTABLE_PATH != '' && vars.ORESLANG_COMPILER_SHA256 != '' && vars.ORESLANG_COMPILER_SOURCE_SHA != '') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Deny without approved compiler and exact demo tree
+        run: |
+          echo "::error::Native Oreslang execution requires preinstalled pinned compiler, approved private runner, exact SHA and tree"
+          exit 1
+  native-ores-acceptance:
+    if: ${{ github.repository == 'ores-truffle-oreslang/oreslang-websocket-server-demo.ores' && github.event.repository.private == true && vars.ORESLANG_PRIVATE_EPHEMERAL_RUNNER == 'true' && vars.ORESLANG_DEMO_APPROVED_SHA != '' && vars.ORESLANG_DEMO_APPROVED_SHA == (github.event.pull_request.head.sha || github.sha) && vars.ORESLANG_DEMO_APPROVED_TREE != '' && vars.ORESLANG_COMPILER_EXECUTABLE_PATH != '' && vars.ORESLANG_COMPILER_SHA256 != '' && vars.ORESLANG_COMPILER_SOURCE_SHA != '' }}
+    runs-on: [self-hosted, linux, x64, oreslang-private-ephemeral]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact approved demo source only
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Execute compiler-backed .ores checks and guest exit 42
+        env:
+          EXPECTED_DEMO_SHA: ${{ vars.ORESLANG_DEMO_APPROVED_SHA }}
+          EXPECTED_DEMO_TREE: ${{ vars.ORESLANG_DEMO_APPROVED_TREE }}
+          ORESLANG_COMPILER: ${{ vars.ORESLANG_COMPILER_EXECUTABLE_PATH }}
+          ORESLANG_COMPILER_SHA256: ${{ vars.ORESLANG_COMPILER_SHA256 }}
+          ORESLANG_COMPILER_SOURCE_SHA: ${{ vars.ORESLANG_COMPILER_SOURCE_SHA }}
+        shell: bash
+        run: bash ci/run-ores-guest-acceptance.sh
