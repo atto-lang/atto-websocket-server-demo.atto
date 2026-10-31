@@ -1,0 +1,25 @@
+// Oreslang-source echo actor (transport-independent).
+// STATUS: AUTHOR-ONLY; not yet compiled, executed or bound to a WebSocket.
+//
+// The trusted future WebSocket actor bridge must decode and validate frames,
+// create ActorMail<String> for TEXT USER messages, and deliver only to this
+// actor's active generation. BINARY and control messages use separate typed
+// delivery paths; they must not be coerced into String.
+//
+// This actor is NOT a WebSocket listener and cannot accept raw sockets.
+import fnc {echo_text} from "./echo_contract.ores";
+
+define actor EchoActor as
+  // No actor constructor: initialization belongs to the actor lifecycle.
+  on_start(): void {
+    return;
+  }
+
+  receive(ActorMail<String> mail): void {
+    // The mailbox owns actor sequencing and immutable message delivery.
+    // Parent output stream is not a WebSocket socket: the host bridge must
+    // separately authorize a bounded outbound enqueue from this actor turn.
+    self.send(echo_text(mail.value));
+    return;
+  }
+end
