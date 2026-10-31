@@ -25,22 +25,6 @@ pub fnc echo_text(String text): String {
   return text;
 }
 
-// Scalar source-level parity fixture. The compiler should execute this
-// and report exit 42; otherwise guest source execution is NOT_VERIFIED.
-// This deliberately exercises only Oreslang logic, not network I/O.
-pub fnc main(): int {
-  val text_result = allowed_echo_bytes(1, 40, 1024);
-  val binary_result = allowed_echo_bytes(2, 2, 1024);
-  val rejected_control = allowed_echo_bytes(9, 0, 1024);
-  val rejected_size = allowed_echo_bytes(2, 1025, 1024);
-  if !(text_result.is_ok() && binary_result.is_ok()); do
-    return 2;
-  fi
-  if rejected_control.is_ok() || rejected_size.is_ok(); do
-    return 3;
-  fi
-  if echo_text("echo") != "echo"; do
-    return 4;
-  fi
-  return text_result.unwrap() + binary_result.unwrap();
-}
+// This source is a linkable library: it deliberately defines NO main().
+// The only executable entry is tests/echo_contract_test.ores.
+// CI must type-check the real imported closure and require guest exit 42.
