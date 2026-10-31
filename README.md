@@ -5,6 +5,7 @@
 ## Actual Oreslang sources
 
 - `src/echo_contract.ores`: **real Oreslang** echo USER-message validation and pure string-echo logic. Its `main(): int` is designed to return **42** after verifying positive and negative opcode/payload-size cases. This is an authored compiler acceptance target, **not an observed exit code**.
+- `tests/echo_contract_test.ores`: **native Oreslang test fixture** importing the production `.ores` contract. Its `main()` also targets exit 42 and checks text/binary classification, control/continuation rejection, size limits, and unchanged echo data. This is not an observed compiler result.
 - `src/echo_actor.ores`: **real Oreslang actor declaration** with `on_start` and `receive(ActorMail<String>)`. It echoes mailbox text to its parent output stream. A parent output stream is *not* a WebSocket connection; this actor is not yet wired to a socket.
 
 Neither source file imports Java, invokes a raw socket, or assumes guest NET authority. The transport remains the host-owned implementation in [oreslang-source.java](https://github.com/ores-truffle-oreslang/oreslang-source.java). Source-level `WebSocketConnection` and compiler lowering are **not** implemented.
@@ -17,7 +18,7 @@ Do **not** treat `EchoActor.self.send` as a WebSocket send. The future actor-to-
 
 ## Execution gate (not yet passed)
 
-1. Pin and execute a real Oreslang compiler on `src/echo_contract.ores`. Expect guest exit 42 and retain exact compiler SHA, command, exit status, and step receipt.
+1. Pin and execute a real Oreslang compiler on both `src/echo_contract.ores` and `tests/echo_contract_test.ores`. Expect guest exit 42 and retain exact compiler SHA, command, exit status, and step receipt.
 2. Compile/typecheck `src/echo_actor.ores`, prove lifecycle and actor-mailbox behavior, then wire it to an authenticated guest WebSocket adapter. A compiler error is a legitimate failure, not a pass or a skipped acceptance test.
 3. Execute localhost RFC 6455 tests with native guest behavior: TEXT/BINARY, masks, fragments, invalid UTF-8, max sizes, ping/pong, backpressure, STOP/transfer/cancel, peer close and resource retirement.
 4. Run authorized JDK 25/GraalVM and LLVM tests on permitted **private** runners; capture exact Git-tree provenance and nonzero-step evidence before changing `demo-status.json` execution fields.
