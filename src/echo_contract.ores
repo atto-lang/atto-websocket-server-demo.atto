@@ -1,0 +1,46 @@
+// Oreslang WebSocket echo DATA contract, not a socket adapter.
+// STATUS: SOURCE_AUTHORED / NOT_EXECUTED by a pinned Oreslang compiler.
+//
+// Host WebSocket framing MUST first validate masking, fragmentation,
+// UTF-8 for text, length limits, close/control frames, actor-generation
+// authorization, and NET permission. This module handles only a validated
+// USER message. It must never reinterpret CONTROL frames as USER payload.
+pub fnc allowed_echo_bytes(int opcode, int message_bytes,
+                           int max_message_bytes): Result<int, String> {
+  if max_message_bytes < 1 || max_message_bytes > 65536; do
+    return Err("invalid bounded WebSocket message limit");
+  fi
+  if message_bytes < 0 || message_bytes > max_message_bytes; do
+    return Err("WebSocket USER message exceeds configured size");
+  fi
+  if !(opcode == 1 || opcode == 2); do
+    return Err("only validated text or binary USER messages may echo");
+  fi
+  return Ok(message_bytes);
+}
+
+// Already UTF-8 validated by the framing adapter.
+// No Java String/socket/transport object crosses this boundary.
+pub fnc echo_text(String text): String {
+  return text;
+}
+
+// Scalar source-level parity fixture. The compiler should execute this
+// and report exit 42; otherwise guest source execution is NOT_VERIFIED.
+// This deliberately exercises only Oreslang logic, not network I/O.
+pub fnc main(): int {
+  val text_result = allowed_echo_bytes(1, 40, 1024);
+  val binary_result = allowed_echo_bytes(2, 2, 1024);
+  val rejected_control = allowed_echo_bytes(9, 0, 1024);
+  val rejected_size = allowed_echo_bytes(2, 1025, 1024);
+  if !(text_result.is_ok() && binary_result.is_ok()); do
+    return 2;
+  fi
+  if rejected_control.is_ok() || rejected_size.is_ok(); do
+    return 3;
+  fi
+  if echo_text("echo") != "echo"; do
+    return 4;
+  fi
+  return text_result.unwrap() + binary_result.unwrap();
+}
