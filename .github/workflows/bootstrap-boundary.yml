@@ -23,6 +23,22 @@ jobs:
           test -f src/echo_contract.ores
           test -f src/echo_actor.ores
           test -f tests/echo_contract_test.ores
+          test -f COMPILER_REF
+          test "$(wc -l < COMPILER_REF)" -eq 1
+          test "$(wc -c < COMPILER_REF)" -eq 41
+          grep -Eq '^[0-9a-f]{40}          grep -Fq 'define actor EchoActor as' src/echo_actor.ores
+          grep -Fq 'pub fnc main(): int' tests/echo_contract_test.ores
+          if grep -Eq '^[[:space:]]*(pub[[:space:]]+)?(fnc|routine)[[:space:]]+main[[:space:]]*\\(' src/echo_contract.ores src/echo_actor.ores; then
+            echo 'POLICY_FAILURE: library or actor defines a competing main()' >&2
+            exit 1
+          fi
+          count="$(git ls-files -- '*.ores' | wc -l | tr -d ' ')"
+          test "$count" = 3
+          test -z "$(git ls-files -- '*.java' '*.class')"
+          echo 'SOURCE_AUTHORED_BOUNDARY_PASS; .ores source exists, compiler and wire execution remain NOT_EXECUTED.'
+ COMPILER_REF
+          test -f ci/run-ores-guest-acceptance.sh
+          test -f .github/workflows/native-ores-guest-acceptance.yml
           grep -Fq 'define actor EchoActor as' src/echo_actor.ores
           grep -Fq 'pub fnc main(): int' tests/echo_contract_test.ores
           if grep -Eq '^[[:space:]]*(pub[[:space:]]+)?(fnc|routine)[[:space:]]+main[[:space:]]*\\(' src/echo_contract.ores src/echo_actor.ores; then
