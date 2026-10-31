@@ -1,19 +1,25 @@
 # Oreslang WebSocket server demo
 
-**Status: empty-demo bootstrap.** No actual WebSocket listener, tested Oreslang guest actor, or deployable server has been committed.
+**Status: source-authored, NOT_EXECUTED.** No actual WebSocket listener has been executed, and no deployable server or verified guest-actor WebSocket bridge is available.
 
-## Integration contract
+## Actual Oreslang sources
 
-- [Java reference compiler](https://github.com/ores-truffle-oreslang/oreslang-source.java) supplies the existing actor/transport runtime boundary; unsupported WebSocket capabilities must fail closed.
-- [oreslang-rpc](https://github.com/ores-truffle-oreslang/oreslang-rpc) owns optional typed request/reply contract identities. Never silently conflate RPC messages with transport frames.
-- A connection must be owned by one actor or an explicit bounded shared state protocol. Close/stop and stale-generation attempts must be deterministic.
-- Specify max frame/message size, fragmentation behavior, backpressure, authentication policy, and whether control frames are accepted while USER work is overloaded.
+- `src/echo_contract.ores`: **real Oreslang** echo USER-message validation and pure string-echo logic. Its `main(): int` is designed to return **42** after verifying positive and negative opcode/payload-size cases. This is an authored compiler acceptance target, **not an observed exit code**.
+- `src/echo_actor.ores`: **real Oreslang actor declaration** with `on_start` and `receive(ActorMail<String>)`. It echoes mailbox text to its parent output stream. A parent output stream is *not* a WebSocket connection; this actor is not yet wired to a socket.
 
-## First executable milestone
+Neither source file imports Java, invokes a raw socket, or assumes guest NET authority. The transport remains the host-owned implementation in [oreslang-source.java](https://github.com/ores-truffle-oreslang/oreslang-source.java). Source-level `WebSocketConnection` and compiler lowering are **not** implemented.
 
-1. Define an Oreslang-source echo actor and a bounded frame/message adapter with explicit close semantics, only for features supported by the pinned compiler.
-2. Add real localhost WebSocket handshake, fragmented-frame, malformed-frame, max-size and peer-disconnect negative tests.
-3. Capture guest execution vs host adapter test tiers separately; no claim of RFC compliance until exercised.
-4. Use only source-org or independently approved private CI.
+## Architecture boundary
 
-Tracked by private [organization integration registry PR #79](https://github.com/ores-truffle-oreslang/oreslang-platform-conformance/pull/79).
+The host adapter must validate RFC 6455 handshake, masking, fragmentation, UTF-8, frame/control opcodes and limits **before** delivering a bounded USER message to an authenticated actor incarnation. The native actor consumes `ActorMail<String>`; only a trusted supervisor may claim a physical WebSocket connection. After actor STOP/transfer/cancellation, pending delivery and outbound authority must be generation-fenced and the host must retire physical I/O loans.
+
+Do **not** treat `EchoActor.self.send` as a WebSocket send. The future actor-to-connection bridge needs an opaque `WebSocketConnection` capability with bounded `Future<Result<T,E>>` operations, and it must use the canonical `WebSocketActorConnectionLease` instead of competing ownership registries.
+
+## Execution gate (not yet passed)
+
+1. Pin and execute a real Oreslang compiler on `src/echo_contract.ores`. Expect guest exit 42 and retain exact compiler SHA, command, exit status, and step receipt.
+2. Compile/typecheck `src/echo_actor.ores`, prove lifecycle and actor-mailbox behavior, then wire it to an authenticated guest WebSocket adapter. A compiler error is a legitimate failure, not a pass or a skipped acceptance test.
+3. Execute localhost RFC 6455 tests with native guest behavior: TEXT/BINARY, masks, fragments, invalid UTF-8, max sizes, ping/pong, backpressure, STOP/transfer/cancel, peer close and resource retirement.
+4. Run authorized JDK 25/GraalVM and LLVM tests on permitted **private** runners; capture exact Git-tree provenance and nonzero-step evidence before changing `demo-status.json` execution fields.
+
+`ci/bootstrap-status.rs` only enforces truthful source and execution claims. `.github/workflows/bootstrap-boundary.yml` is structural and has not run an Oreslang compiler. Source-org/private-source export remains governed by [security issue #1636](https://github.com/ores-truffle-oreslang/oreslang-source.java/issues/1636); do not mirror private compiler/runtime source across orgs without the prescribed protection and independent approval.
