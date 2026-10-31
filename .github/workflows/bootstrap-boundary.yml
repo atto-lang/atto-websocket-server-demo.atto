@@ -24,7 +24,11 @@ jobs:
           test -f src/echo_actor.ores
           test -f tests/echo_contract_test.ores
           grep -Fq 'define actor EchoActor as' src/echo_actor.ores
-          grep -Fq 'pub fnc main(): int' src/echo_contract.ores
+          grep -Fq 'pub fnc main(): int' tests/echo_contract_test.ores
+          if grep -Eq '^[[:space:]]*(pub[[:space:]]+)?(fnc|routine)[[:space:]]+main[[:space:]]*\\(' src/echo_contract.ores src/echo_actor.ores; then
+            echo 'POLICY_FAILURE: library or actor defines a competing main()' >&2
+            exit 1
+          fi
           count="$(git ls-files -- '*.ores' | wc -l | tr -d ' ')"
           test "$count" = 3
           test -z "$(git ls-files -- '*.java' '*.class')"
