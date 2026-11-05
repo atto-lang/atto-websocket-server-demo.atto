@@ -53,4 +53,21 @@ check_ok rest-legacy
 printf 'new\n' > "$test_repo/scripts/new_tool.py"
 git -C "$test_repo" add .
 check_bad rest-legacy
-printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=8\n'
+# Exact-HEAD identity is a separate admission invariant, not a compiler receipt.
+git -C "$test_repo" rm -q -f -- scripts/benchmark.py scripts/new_tool.py
+git -C "$test_repo" commit -qm 'record clean policy test head'
+pinned_head="$(git -C "$test_repo" rev-parse HEAD)"
+EXPECTED_DEMO_SHA="$pinned_head" check_ok
+EXPECTED_DEMO_SHA="$(printf '0%.0s' {1..40})" check_bad
+EXPECTED_DEMO_SHA="${pinned_head^^}" check_bad
+
+# SOURCE_REF is precisely one canonical lowercase 40-hex line.
+printf 'a%.0s' {1..40} > "$test_repo/SOURCE_REF"
+printf '\r\n' >> "$test_repo/SOURCE_REF"
+git -C "$test_repo" add SOURCE_REF
+check_bad
+printf 'a%.0s' {1..40} > "$test_repo/SOURCE_REF"
+printf '\n' >> "$test_repo/SOURCE_REF"
+git -C "$test_repo" add SOURCE_REF
+check_ok
+printf 'SOURCE_POLICY_NEGATIVE_TESTS_PASS scenarios=12\n'
