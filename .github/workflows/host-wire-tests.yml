@@ -15,12 +15,34 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Rust RFC6455 host tests and build
+      - name: Verify exact checked-out source identity (not a guest receipt)
         shell: bash
+        env:
+          EXPECTED_DEMO_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_DEMO_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$EXPECTED_DEMO_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          tree="$(git rev-parse HEAD^{tree})"
+          test "${#tree}" -eq 40
+          test -f native/ws_echo.rs
+          printf 'HOST_SOURCE_IDENTITY_OK head=%s tree=%s\n' "$EXPECTED_DEMO_SHA" "$tree"
+      - name: Execute all 15 Rust RFC6455 host tests and build
+        shell: bash
+        env:
+          EXPECTED_DEMO_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           mkdir -p target
           rustc --edition=2021 --deny warnings --test native/ws_echo.rs -o target/ws-tests
+          n="$(target/ws-tests --list | grep -Ec ': test$')"
+          if [[ "$n" -ne 15 ]]; then
+            printf 'HOST_RFC6455_TEST_DISCOVERY_FAIL expected=15 actual=%s\n' "$n" >&2
+            exit 1
+          fi
           target/ws-tests --nocapture
           rustc --edition=2021 --deny warnings native/ws_echo.rs -o target/ws-echo
+          printf 'HOST_RFC6455_EXECUTED head=%s tree=%s tests=%s rustc=%s host_only=1 guest_NOT_EXECUTED=1\n' \
+            "$EXPECTED_DEMO_SHA" "$(git rev-parse HEAD^{tree})" "$n" "$(rustc --version)"
           echo 'HOST_RFC6455_ONLY; AttoLang guest and AOT NOT_EXECUTED'
