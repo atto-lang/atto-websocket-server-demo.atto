@@ -316,10 +316,16 @@ fn serve()->io::Result<()>{
             continue;
         }
         let count=Arc::clone(&slots);
-        std::thread::spawn(move||{
+        let created=std::thread::Builder::new().name("ws-echo-client".into()).spawn(move||{
             let _token=Slot(count);
             if let Err(e)=handle(stream){eprintln!("client I/O: {e}");}
         });
+        if let Err(e)=created {
+            // Builder drops the moved stream on failure, but its closure never runs:
+            // explicitly retire the admission slot before accepting more peers.
+            slots.fetch_sub(1,Ordering::AcqRel);
+            eprintln!("WebSocket worker admission failed: {e}");
+        }
     }
     Ok(())
 }
