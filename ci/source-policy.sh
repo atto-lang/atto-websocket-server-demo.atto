@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fail-closed tracked-source policy; host-only, no Oreslang guest execution.
+# Fail-closed tracked-source policy; host-only, no AttoLang guest execution.
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 root="${SOURCE_POLICY_ROOT:-$repo_root}"
@@ -10,11 +10,13 @@ if [[ -n "${EXPECTED_DEMO_SHA:-}" ]]; then
   [[ "${EXPECTED_DEMO_SHA}" =~ ^[a-f0-9]{40}$ ]] || { echo "POLICY_FAILURE: invalid expected head" >&2; exit 2; }
   [[ "$(git rev-parse HEAD)" == "$EXPECTED_DEMO_SHA" ]] || { echo "POLICY_FAILURE: mismatched head" >&2; exit 2; }
 fi
-if [[ -f SOURCE_REF ]]; then
-  [[ "$(wc -l < SOURCE_REF)" -eq 1 ]] && grep -Eq '^[a-f0-9]{40}$' SOURCE_REF && [[ "$(wc -c < SOURCE_REF)" -eq 41 ]] || {
-    echo "POLICY_FAILURE: SOURCE_REF requires exactly 40 lowercase hex characters and newline" >&2; exit 2;
-  }
-fi
+for ref in SOURCE_REF COMPILER_REF; do
+  if [[ -f "$ref" ]]; then
+    [[ "$(wc -l < "$ref")" -eq 1 ]] && grep -Eq '^[a-f0-9]{40}$' "$ref" && [[ "$(wc -c < "$ref")" -eq 41 ]] || {
+      echo "POLICY_FAILURE: $ref requires exactly 40 lowercase hex characters and newline" >&2; exit 2;
+    }
+  fi
+done
 mode="${SOURCE_POLICY_MODE:-strict}"
 [[ "$mode" == strict || "$mode" == rest-legacy ]] || { echo "POLICY_FAILURE: unknown mode" >&2; exit 2; }
 count=0
@@ -23,7 +25,7 @@ while IFS= read -r -d '' path; do
   (( count <= 50000 )) || { echo "POLICY_FAILURE: file budget" >&2; exit 2; }
   if [[ -L "$path" ]]; then
     case "${path,,}" in
-      *.ores|*.py|*.pyi|*.ipynb)
+      *.atto|*.ores|*.py|*.pyi|*.ipynb)
         echo "POLICY_FAILURE: symlinked source: $path" >&2; exit 2 ;;
     esac
   fi
@@ -56,4 +58,4 @@ printf 'SOURCE_POLICY_STRUCTURAL_PASS tracked_files=%s mode=%s\n' "$count" "$mod
 if [[ "$mode" == rest-legacy ]]; then
   echo 'LEGACY_PYTHON_NONCOMPLIANT: complete Rust replacement remains required'
 fi
-echo 'NOT_EXECUTED: this gate did not invoke an Oreslang compiler or guest'
+echo 'NOT_EXECUTED: this gate did not invoke an AttoLang compiler or guest'
