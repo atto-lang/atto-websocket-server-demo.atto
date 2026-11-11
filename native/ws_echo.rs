@@ -406,6 +406,18 @@ mod tests{
     #[test] fn invalid_peer_frame_causes_protocol_close(){
         for (frame,expected) in [
             (vec![0x81,1,b'x'],1002u16),
+            ({
+                let mut fragmented=masked(1,false,&[0xc3]);
+                fragmented.extend_from_slice(&masked(0,true,&[0x28]));
+                fragmented
+            },1007u16),
+            ({
+                let mut huge=masked(2,false,&[0u8;125]);
+                for _ in 0..525 {
+                    huge.extend_from_slice(&masked(0,false,&[0u8;125]));
+                }
+                huge
+            },1009u16),
             (masked(0,true,b"stray"),1002u16),
             (masked(1,true,&[0xff]),1007u16),
             (masked(8,true,&[0x03]),1002u16),
@@ -507,8 +519,32 @@ mod tests{
         assert!(frame_deadline(beyond,Some(started))<beyond);
     }
 
+
+    #[test] fn concurrent_connection_admission_never_exceeds_quota() {
+        use std::sync::Barrier;
+        let slots=Arc::new(AtomicUsize::new(0));
+        let ready=Arc::new(Barrier::new(32));
+        let done=Arc::new(Barrier::new(32));
+        let mut threads=Vec::new();
+        for _ in 0..32 {
+            let slots=Arc::clone(&slots);
+            let ready=Arc::clone(&ready);
+            let done=Arc::clone(&done);
+            threads.push(std::thread::spawn(move||{
+                ready.wait();
+                let admitted=try_reserve(&slots);
+                done.wait(); // all workers attempt before any slot is released
+                if admitted {slots.fetch_sub(1,Ordering::AcqRel);}
+                admitted
+            }));
+        }
+        let count=threads.into_iter().filter(|t|t.join().unwrap()).count();
+        assert_eq!(count,MAX_CONNECTIONS);
+        assert_eq!(slots.load(Ordering::Acquire),0);
+    }
+
     #[test] fn tcp_loopback_rejects_malformed_handshake() {
-        for variant in 0..5 {
+        for variant in 0..7 {
             let listener=TcpListener::bind("127.0.0.1:0").unwrap();
             let address=listener.local_addr().unwrap();
             let base=request(address.port());
@@ -517,7 +553,9 @@ mod tests{
                 1=>base.replace("Version: 13","Version: 8"),
                 2=>base.replace("\r\n\r\n","\r\nContent-Length: 0\r\n\r\n"),
                 3=>base.replace("\r\n\r\n","\r\nOrigin: https://evil.test\r\n\r\n"),
-                _=>base.replace("\r\n\r\n","\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"),
+                4=>base.replace("\r\n\r\n","\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"),
+                5=>base.replace(&format!("Host: 127.0.0.1:{}",address.port()),"Host: 127.0.0.1:9999"),
+                _=>base.replace("\r\n\r\n",&format!("\r\nOrigin: http://localhost:{}\r\n\r\n",address.port())),
             };
             let server=std::thread::spawn(move||{
                 let (peer,_) = listener.accept().unwrap();
