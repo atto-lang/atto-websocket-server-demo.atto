@@ -538,7 +538,7 @@ mod tests{
                 admitted
             }));
         }
-        let count=threads.into_iter().filter(|t|t.join().unwrap()).count();
+        let count=threads.into_iter().map(|t|t.join().unwrap()).filter(|admitted|*admitted).count();
         assert_eq!(count,MAX_CONNECTIONS);
         assert_eq!(slots.load(Ordering::Acquire),0);
     }
