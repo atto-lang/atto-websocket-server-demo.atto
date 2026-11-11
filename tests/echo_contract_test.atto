@@ -21,6 +21,6 @@ pub fnc main(): int {
   if too_large.is_ok() { return 17; }
   if negative.is_ok() { return 18; }
   if bad_limit.is_ok() { return 19; }
-  if echo_text("atto-echo") != "atto-echo" { return 20; }
+  if echo_text("atto-echo") neq "atto-echo" { return 20; }
   return text.unwrap() + binary.unwrap();
 }
