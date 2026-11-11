@@ -215,8 +215,10 @@ fn write_frame(writer:&mut impl Write, opcode:u8, data:&[u8])->io::Result<()>{
 // drain pending unread bytes so Linux does not reset the TCP socket while the
 // peer is reading the close frame. Both the byte and wall-clock budgets are
 // bounded; this is a HOST transport operation, not an actor-carrier wait.
-fn close(stream:&mut TcpStream,code:u16) {
-    if write_frame(stream,8,&code.to_be_bytes()).is_err() {return;}
+fn send_close(stream:&mut TcpStream,payload:&[u8]) {
+    // Preserve a peer's validated close code/reason, including an empty close.
+    // Malformed peer close payloads are never passed here by the caller.
+    if write_frame(stream,8,payload).is_err() {return;}
     let _=stream.shutdown(Shutdown::Write);
     let deadline=Instant::now()+Duration::from_millis(150);
     let mut drained=0usize;
@@ -231,6 +233,9 @@ fn close(stream:&mut TcpStream,code:u16) {
             Err(_)=>break,
         }
     }
+}
+fn close(stream:&mut TcpStream,code:u16) {
+    send_close(stream,&code.to_be_bytes());
 }
 // 1014 is reserved; 1005, 1006 and 1015 cannot appear in close frames.
 fn close_code_ok(c:u16)->bool {matches!(c,1000..=1003|1007..=1013|3000..=4999)}
@@ -274,7 +279,7 @@ fn handle(mut stream:TcpStream)->io::Result<()>{
                     if !close_code_ok(c){close(&mut stream,1002);return Ok(());}
                     if std::str::from_utf8(&f.data[2..]).is_err(){close(&mut stream,1007);return Ok(());}
                 }
-                write_frame(&mut stream,8,&f.data)?;return Ok(());
+                send_close(&mut stream,&f.data);return Ok(());
             },
             9=>write_frame(&mut stream,10,&f.data)?,
             10=>{},
@@ -495,6 +500,33 @@ mod tests{
         peer.write_all(&masked(8,true,&1000u16.to_be_bytes())).unwrap();
         let mut closed=[0u8;4];peer.read_exact(&mut closed).unwrap();
         assert_eq!(closed,[0x88,2,3,232]);
+        server.join().unwrap();
+    }
+
+    #[test] fn valid_close_reason_is_echoed_and_drained() {
+        let listener=TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr=listener.local_addr().unwrap();
+        let server=std::thread::spawn(move||{
+            let (peer,_)=listener.accept().unwrap();
+            handle(peer).unwrap();
+        });
+        let mut peer=TcpStream::connect(addr).unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        peer.write_all(request(addr.port()).as_bytes()).unwrap();
+        let mut response=Vec::new();
+        while !response.ends_with(b"\r\n\r\n") {
+            let mut one=[0u8;1];peer.read_exact(&mut one).unwrap();
+            response.push(one[0]);
+            assert!(response.len()<1024);
+        }
+        assert!(response.starts_with(b"HTTP/1.1 101"));
+        let mut inbound=masked(8,true,&[0x03,0xe8,b'b',b'y',b'e']);
+        // Pipelined bytes after CLOSE must not reset the delivered close reply.
+        inbound.extend_from_slice(&masked(1,true,b"late"));
+        peer.write_all(&inbound).unwrap();
+        let mut echoed=[0u8;7];
+        peer.read_exact(&mut echoed).unwrap();
+        assert_eq!(echoed,[0x88,5,0x03,0xe8,b'b',b'y',b'e']);
         server.join().unwrap();
     }
 
