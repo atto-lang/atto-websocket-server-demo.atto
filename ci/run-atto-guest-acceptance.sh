@@ -36,6 +36,9 @@ set +e
 code=$?
 set -e
 [[ "$code" -eq 42 ]] || fail "guest returned $code, expected 42"
+# A constant-exit wrapper is not compiler evidence. The same exact pinned
+# executable must typecheck and run a single controlled source mutation.
+bash "$root/ci/run-guest-mutation-witness.sh" "$compiler_real" "$root" || fail "guest mutation witness failed"
 printf 'ATTO_GUEST_EXECUTED head=%s tree=%s compiler_source=%s compiler_sha256=%s exit=42\n' \
   "$EXPECTED_DEMO_SHA" "$EXPECTED_DEMO_TREE" "$ATTO_COMPILER_SOURCE_SHA" "$ATTO_COMPILER_SHA256"
 printf 'NOT_VERIFIED: guest-to-WebSocket bridge, native AOT, other backends\n'

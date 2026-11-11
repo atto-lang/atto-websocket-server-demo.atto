@@ -40,3 +40,9 @@ Use [Java/Graal actor-owned WebSocket transport PR #2061](https://github.com/ore
 ## Guest executable path trust boundary
 
 The acceptance script resolves the compiler executable with `realpath -e`, checks the **resolved** path is outside the PR checkout, and hashes/invokes that same resolved executable. A seemingly external symlink pointing into the untrusted checkout must not be treated as a preinstalled trusted compiler. The source-boundary workflow includes five **mock-only negative** tests in `ci/test-atto-compiler-path-guard.sh`. These tests check admission behavior and must never be promoted as AttoLang guest execution; all guest, wire and AOT evidence remains `NOT_EXECUTED` until independently verified.
+
+## Mandatory guest negative-mutation witness
+
+After the exact-head and compiler SHA-256 checks, the trusted compiler must first check all three actual `.atto` sources and return guest exit code 42. The same pinned compiler must then check and execute an isolated **in-checkout temporary copy** of the guest test in which the final expression `return text.unwrap() + binary.unwrap();` is uniquely replaced with `return 43;`. The witness requires exit code 43 and verifies that the tracked checkout is clean after staging cleanup. A constant-42 wrapper must fail this witness. This is only a limited, controlled semantic mutation, not formal proof or an adversarial compiler attestation. The source-boundary CI runs a **mock-only** positive and three negative admissions; mock results never count as real guest execution.
+
+The witness's relative import uses the staged `src/echo_contract.atto`. Actual compiler acceptance of staging is **NOT_EXECUTED** until an approved real compiler and runner become available. Do not promote `demo-status.json` based on source inspection, structural checks or mock witnesses.
