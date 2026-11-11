@@ -36,3 +36,7 @@ Missing approvals deliberately trigger a denial job. A positive gate is only acc
 ## Existing runtime work
 
 Use [Java/Graal actor-owned WebSocket transport PR #2061](https://github.com/ores-truffle-oreslang/oreslang-source.java/pull/2061) and [compiler issue #2051](https://github.com/ores-truffle-oreslang/oreslang-source.java/issues/2051) as the one canonical owner/lease foundation. The host-only Rust harness here is an independent protocol oracle, not a candidate new Java actor authority. [Bridge contract](WEBSOCKET_ACTOR_BRIDGE_V1.md) describes binding, negative tests, and promotion criteria. No cross-org transfer is authorized by these docs.
+
+## Guest executable path trust boundary
+
+The acceptance script resolves the compiler executable with `realpath -e`, checks the **resolved** path is outside the PR checkout, and hashes/invokes that same resolved executable. A seemingly external symlink pointing into the untrusted checkout must not be treated as a preinstalled trusted compiler. The source-boundary workflow includes five **mock-only negative** tests in `ci/test-atto-compiler-path-guard.sh`. These tests check admission behavior and must never be promoted as AttoLang guest execution; all guest, wire and AOT evidence remains `NOT_EXECUTED` until independently verified.

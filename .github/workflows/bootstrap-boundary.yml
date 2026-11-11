@@ -25,3 +25,6 @@ jobs:
       - name: Run source-free carrier preflight negative tests (audit only)
         shell: bash
         run: bash ci/test-carrier-source-preflight.sh
+      - name: Audit native compiler executable path with mock-only negatives
+        shell: bash
+        run: bash ci/test-atto-compiler-path-guard.sh
