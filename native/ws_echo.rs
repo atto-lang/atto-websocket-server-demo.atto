@@ -152,19 +152,19 @@ impl Read for FrameDeadlineReader<'_> {
     }
 }
 fn read_frame(reader:&mut impl Read)->Result<Frame,u16>{
-    let mut h=[0u8;2]; reader.read_exact(&mut h).map_err(|_|1002)?;
+    let mut h=[0u8;2]; reader.read_exact(&mut h).map_err(|_|1002u16)?;
     if h[0]&0x70!=0 || h[1]&0x80==0 {return Err(1002);} // RSV, masking
     let fin=h[0]&128!=0; let opcode=h[0]&15;
     if !matches!(opcode,0|1|2|8|9|10) {return Err(1002);}
     let code=(h[1]&127) as usize;
     let len=match code {
         126=>{
-            let mut b=[0u8;2]; reader.read_exact(&mut b).map_err(|_|1002)?;
+            let mut b=[0u8;2]; reader.read_exact(&mut b).map_err(|_|1002u16)?;
             let n=u16::from_be_bytes(b) as usize;
             if n<126 {return Err(1002);} n
         },
         127=>{
-            let mut b=[0u8;8]; reader.read_exact(&mut b).map_err(|_|1002)?;
+            let mut b=[0u8;8]; reader.read_exact(&mut b).map_err(|_|1002u16)?;
             if b[0]&128!=0 {return Err(1002);}
             let n=u64::from_be_bytes(b);
             if n<=65535 {return Err(1002);} // reject nonminimal 64-bit length
@@ -175,8 +175,8 @@ fn read_frame(reader:&mut impl Read)->Result<Frame,u16>{
     };
     if len>MAX_MESSAGE {return Err(1009);}
     if opcode>=8 && (!fin||len>125) {return Err(1002);}
-    let mut mask=[0u8;4]; reader.read_exact(&mut mask).map_err(|_|1002)?;
-    let mut data=vec![0u8;len]; reader.read_exact(&mut data).map_err(|_|1002)?;
+    let mut mask=[0u8;4]; reader.read_exact(&mut mask).map_err(|_|1002u16)?;
+    let mut data=vec![0u8;len]; reader.read_exact(&mut data).map_err(|_|1002u16)?;
     for (i,b) in data.iter_mut().enumerate(){*b^=mask[i%4];}
     Ok(Frame{fin,opcode,data})
 }
@@ -266,14 +266,23 @@ fn handle(mut stream:TcpStream)->io::Result<()>{
 }
 struct Slot(Arc<AtomicUsize>);
 impl Drop for Slot{fn drop(&mut self){self.0.fetch_sub(1,Ordering::AcqRel);}}
+fn try_reserve(slots:&AtomicUsize)->bool{
+    let mut observed=slots.load(Ordering::Acquire);
+    loop {
+        if observed>=MAX_CONNECTIONS {return false;}
+        match slots.compare_exchange_weak(observed,observed+1,Ordering::AcqRel,Ordering::Acquire) {
+            Ok(_)=>return true,
+            Err(current)=>observed=current,
+        }
+    }
+}
 fn serve()->io::Result<()>{
     let listener=TcpListener::bind("127.0.0.1:9001")?;
     let slots=Arc::new(AtomicUsize::new(0));
     println!("Host-only Rust WebSocket echo: ws://127.0.0.1:9001/ws; AttoLang guest NOT_EXECUTED");
     for connection in listener.incoming(){
         let mut stream=connection?;
-        if slots.fetch_update(Ordering::AcqRel,Ordering::Acquire,|n|
-            if n<MAX_CONNECTIONS {Some(n+1)}else{None}).is_err(){
+        if !try_reserve(&slots){
             let _=stream.write_all(b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
             continue;
         }
@@ -492,5 +501,17 @@ mod tests{
                 .any(|w|w==b"Sec-WebSocket-Accept"));
             server.join().unwrap();
         }
+    }
+
+    #[test] fn connection_credit_is_strict_and_reclaimable() {
+        let credits=Arc::new(AtomicUsize::new(MAX_CONNECTIONS-1));
+        assert!(try_reserve(&credits));
+        assert_eq!(credits.load(Ordering::Acquire),MAX_CONNECTIONS);
+        assert!(!try_reserve(&credits));
+        assert_eq!(credits.load(Ordering::Acquire),MAX_CONNECTIONS);
+        drop(Slot(Arc::clone(&credits)));
+        assert_eq!(credits.load(Ordering::Acquire),MAX_CONNECTIONS-1);
+        assert!(try_reserve(&credits));
+        assert_eq!(credits.load(Ordering::Acquire),MAX_CONNECTIONS);
     }
 }
