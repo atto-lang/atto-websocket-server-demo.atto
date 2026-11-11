@@ -127,6 +127,21 @@ fn read_upgrade_with_deadline(stream: &mut TcpStream, budget:Duration) -> io::Re
 }
 #[derive(Debug,PartialEq,Eq)]
 struct Frame {fin:bool, opcode:u8, data:Vec<u8>}
+// Absolute per-frame deadline: trickling bytes must not reset the time budget.
+struct FrameDeadlineReader<'a> {
+    socket: &'a mut TcpStream,
+    deadline: Instant,
+}
+impl Read for FrameDeadlineReader<'_> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let remaining = self.deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(io::Error::new(io::ErrorKind::TimedOut,"frame deadline exceeded"));
+        }
+        self.socket.set_read_timeout(Some(remaining))?;
+        self.socket.read(buffer)
+    }
+}
 fn read_frame(reader:&mut impl Read)->Result<Frame,u16>{
     let mut h=[0u8;2]; reader.read_exact(&mut h).map_err(|_|1002)?;
     if h[0]&0x70!=0 || h[1]&0x80==0 {return Err(1002);} // RSV, masking
@@ -157,7 +172,9 @@ fn read_frame(reader:&mut impl Read)->Result<Frame,u16>{
     Ok(Frame{fin,opcode,data})
 }
 fn write_frame(writer:&mut impl Write, opcode:u8, data:&[u8])->io::Result<()>{
-    if data.len()>MAX_MESSAGE {return Err(io::Error::new(io::ErrorKind::InvalidInput,"oversized reply"));}
+    if data.len()>MAX_MESSAGE || (opcode>=8 && data.len()>125) {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput,"oversized outbound frame"));
+    }
     let mut h=vec![0x80|opcode];
     if data.len()<126 {h.push(data.len() as u8);}
     else if data.len()<=u16::MAX as usize {
@@ -168,7 +185,8 @@ fn write_frame(writer:&mut impl Write, opcode:u8, data:&[u8])->io::Result<()>{
     writer.write_all(&h)?; writer.write_all(data)?; writer.flush()
 }
 fn close(writer:&mut impl Write,code:u16) {let _=write_frame(writer,8,&code.to_be_bytes());}
-fn close_code_ok(c:u16)->bool {matches!(c,1000..=1003|1007..=1014|3000..=4999)}
+// 1014 is reserved; 1005, 1006 and 1015 cannot appear in close frames.
+fn close_code_ok(c:u16)->bool {matches!(c,1000..=1003|1007..=1013|3000..=4999)}
 fn echo(writer:&mut impl Write,op:u8,data:&[u8])->Result<(),u16>{
     if op==1&&std::str::from_utf8(data).is_err(){return Err(1007);}
     write_frame(writer,op,data).map_err(|_|1011)
@@ -192,7 +210,14 @@ fn handle(mut stream:TcpStream)->io::Result<()>{
         if fragment_started.is_some_and(|start|start.elapsed()>=Duration::from_secs(30)) {
             close(&mut stream,1008);return Ok(());
         }
-        let f=match read_frame(&mut stream){Ok(f)=>f,Err(code)=>{close(&mut stream,code);return Ok(());}};
+        let parsed = {
+            let mut limited = FrameDeadlineReader {
+                socket: &mut stream,
+                deadline: Instant::now() + Duration::from_secs(30),
+            };
+            read_frame(&mut limited)
+        };
+        let f=match parsed {Ok(f)=>f,Err(code)=>{close(&mut stream,code);return Ok(());}};
         match f.opcode {
             8=>{
                 if f.data.len()==1 {close(&mut stream,1002);return Ok(());}
@@ -334,6 +359,7 @@ mod tests{
             (masked(0,true,b"stray"),1002u16),
             (masked(1,true,&[0xff]),1007u16),
             (masked(8,true,&[0x03]),1002u16),
+            (masked(8,true,&1014u16.to_be_bytes()),1002u16),
         ] {
             let listener=TcpListener::bind("127.0.0.1:0").unwrap();
             let address=listener.local_addr().unwrap();
@@ -388,5 +414,35 @@ mod tests{
         let mut closed=[0u8;4];peer.read_exact(&mut closed).unwrap();
         assert_eq!(closed,[0x88,2,3,232]);
         server.join().unwrap();
+    }
+
+    #[test] fn expired_frame_deadline_stops_read_before_socket_wait() {
+        let listener=TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut client=TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (_server,_) = listener.accept().unwrap();
+        let mut limited=FrameDeadlineReader {
+            socket:&mut client,
+            deadline:Instant::now()-Duration::from_millis(1),
+        };
+        let mut one=[0u8;1];
+        assert_eq!(limited.read(&mut one).unwrap_err().kind(),io::ErrorKind::TimedOut);
+    }
+    #[test] fn handshake_rejects_noncanonical_and_ambiguous_headers() {
+        let r=request(9001);
+        assert!(upgrade(&r.replace("GET /ws HTTP/1.1","POST /ws HTTP/1.1")).is_err());
+        assert!(upgrade(&r.replace("Host: 127.0.0.1:9001\r\n","")).is_err());
+        assert!(upgrade(&r.replace("Upgrade: websocket\r\n","")).is_err());
+        assert!(upgrade(&r.replace("Connection: keep-alive, Upgrade","Connection: keep-alive")).is_err());
+        assert!(upgrade(&r.replace("\r\n\r\n","\r\nOrigin: null\r\n\r\n")).is_err());
+        assert!(upgrade(&r.replace("\r\n\r\n","\r\n Origin: http://127.0.0.1:9001\r\n\r\n")).is_err());
+        assert!(upgrade(&r.replace("\r\n\r\n","\r\nSec-WebSocket-Protocol: chat\r\n\r\n")).is_err());
+    }
+    #[test] fn control_frame_writes_remain_bounded() {
+        let mut out=Vec::new();
+        assert!(write_frame(&mut out,9,&[0;126]).is_err());
+        assert!(out.is_empty());
+        write_frame(&mut out,9,&[0;125]).unwrap();
+        assert_eq!(out[0],0x89);
+        assert_eq!(out[1],125);
     }
 }
