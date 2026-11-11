@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "kind": "websocket-server",
-  "status": "bootstrap",
-  "native_guest_present": false,
+  "status": "source-authored",
+  "native_guest_present": true,
   "compiler_execution_verified": false,
   "exact_head_ci_verified": false,
   "network_listener_verified": false,
   "frame_protocol_verified": false,
-  "first_executable_milestone": "native echo actor plus bounded frame adapter and localhost handshake/fragmentation/negative tests"
+  "first_executable_milestone": "compiled .atto EchoActor bound to bounded WebSocket session, with exact-head guest plus wire test receipts"
 }

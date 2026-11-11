@@ -1,0 +1,17 @@
+// Transport-independent AttoLang USER message policy.
+// Do not pass raw WebSocket frames or socket capabilities into this function.
+// The host must validate masking, UTF-8, fragmentation, control frames and auth.
+pub fnc allowed_echo_bytes(int opcode, int message_bytes, int max_message_bytes): Result<int, String> {
+  if max_message_bytes < 1 { return Err("invalid WebSocket message limit"); }
+  if max_message_bytes > 65536 { return Err("message limit exceeds demo maximum"); }
+  if message_bytes < 0 { return Err("negative message length"); }
+  if message_bytes > max_message_bytes { return Err("message exceeds configured limit"); }
+  if opcode eq 1 { return Ok(message_bytes); }
+  if opcode eq 2 { return Ok(message_bytes); }
+  return Err("not a validated TEXT or BINARY message");
+}
+
+// Echo bytes as already validated UTF-8 text. No FFI or socket authority.
+pub fnc echo_text(String text): String {
+  return text;
+}

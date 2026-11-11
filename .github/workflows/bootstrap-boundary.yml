@@ -1,11 +1,11 @@
-name: WebSocket bootstrap boundary
+name: Canonical AttoLang source boundary
 on:
   pull_request:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  bootstrap:
+  source-boundary:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -13,15 +13,12 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Require explicit promotion before executable guest source lands
+      - name: Reject stale bootstrap, legacy guest and symlinks
         shell: bash
         run: |
           set -euo pipefail
-          grep -Fq '**Status: empty-demo bootstrap.**' README.md
-          grep -Fq 'No actual WebSocket listener' README.md
+          grep -Fq 'Status: source-authored' README.md
           test -z "$(find . -path ./.git -prune -o -type l -print -quit)"
-          if find . -path ./.git -prune -o -type f -name '*.ores' -print -quit | grep -q .; then
-            echo 'Native guest source was added while README still declares an empty bootstrap.' >&2
-            exit 1
-          fi
-          echo 'BOOTSTRAP_BOUNDARY_PASS; listener and guest execution remain NOT_EXECUTED.'
+          test -z "$(git ls-files -- '*.ores')"
+          test "$(git ls-files -- '*.atto' | wc -l | tr -d ' ')" -eq 3
+          echo 'ATTO_SOURCE_BOUNDARY_PASS; no compiler or WebSocket guest executed'

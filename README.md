@@ -1,19 +1,42 @@
-# Oreslang WebSocket server demo
+# AttoLang WebSocket echo demo
 
-**Status: empty-demo bootstrap.** No actual WebSocket listener, tested Oreslang guest actor, or deployable server has been committed.
+**Status: source-authored, guest-to-wire integration unverified.** This repository now contains canonical `.atto` echo contract, actor and guest acceptance test sources, alongside a separate dependency-free Rust loopback RFC 6455 transport harness. These are **two separate execution tiers**: a working Rust transport, even if its tests pass, does **not** prove a compiled AttoLang actor handles a WebSocket connection.
 
-## Integration contract
+## Components
 
-- [Java reference compiler](https://github.com/ores-truffle-oreslang/oreslang-source.java) supplies the existing actor/transport runtime boundary; unsupported WebSocket capabilities must fail closed.
-- [oreslang-rpc](https://github.com/ores-truffle-oreslang/oreslang-rpc) owns optional typed request/reply contract identities. Never silently conflate RPC messages with transport frames.
-- A connection must be owned by one actor or an explicit bounded shared state protocol. Close/stop and stale-generation attempts must be deterministic.
-- Specify max frame/message size, fragmentation behavior, backpressure, authentication policy, and whether control frames are accepted while USER work is overloaded.
+- `src/echo_contract.atto`: transport-independent, bounded echo policy for already-validated USER messages.
+- `src/echo_actor.atto`: an AttoLang `EchoActor` that consumes an `ActorMail<String>` from its actor mailbox. `self.send` is **not a socket write**.
+- `tests/echo_contract_test.atto`: imports production contract and expects exit code **42** after checking positive and negative cases.
+- `native/ws_echo.rs`: dependency-free, localhost-only Rust RFC 6455 echo/wire harness with explicit bounds, no AttoLang guest integration. Builds with stable `rustc`.
 
-## First executable milestone
+## Host-only loopback demo (no AttoLang guest)
 
-1. Define an Oreslang-source echo actor and a bounded frame/message adapter with explicit close semantics, only for features supported by the pinned compiler.
-2. Add real localhost WebSocket handshake, fragmented-frame, malformed-frame, max-size and peer-disconnect negative tests.
-3. Capture guest execution vs host adapter test tiers separately; no claim of RFC compliance until exercised.
-4. Use only source-org or independently approved private CI.
+```sh
+mkdir -p target
+rustc --edition=2021 --test native/ws_echo.rs -o target/ws-tests
+./target/ws-tests
+rustc --edition=2021 native/ws_echo.rs -o target/ws-echo
+./target/ws-echo
+# Connect a WebSocket client to ws://127.0.0.1:9001/ws
+```
 
-Tracked by private [organization integration registry PR #79](https://github.com/ores-truffle-oreslang/oreslang-platform-conformance/pull/79).
+Binds **only** to 127.0.0.1, port 9001; never expose this demo to a public network. The harness requires client masking and strict upgrade, rejects unsupported extensions and nonlocal browser origins, validates fragmented text UTF-8, handles ping/pong/close, uses bounded frames/messages, caps active connections, and has read/write timeouts. It is *not* an authenticated, production or actor-integrated server.
+
+## AttoLang compiler acceptance (requires externally approved compiler)
+
+```sh
+EXPECTED_DEMO_SHA="$(git rev-parse HEAD)" \
+EXPECTED_DEMO_TREE="$(git rev-parse HEAD^{tree})" \
+ATTO_COMPILER=/absolute/path/to/approved/oreslang-compiler \
+ATTO_COMPILER_SHA256=<verified-64-lowercase-hex-digest> \
+ATTO_COMPILER_SOURCE_SHA="$(cat COMPILER_REF)" \
+bash ci/run-atto-guest-acceptance.sh
+```
+
+Only run with an independently approved preinstalled compiler outside this checkout. The script fails closed for missing/mismatched binary, source pin or exact-head tree. It invokes real compiler `--check` on all three `.atto` files and executes the guest test using `--mode=jit`, requiring exit 42. Do not treat a script's existence or structural CI as evidence it has run.
+
+## Missing binding / next engineering milestone
+
+The compiler's `define websocket actor`, `WebSocketMessage`, and opaque WebSocket connection APIs are design targets, **not proved executable** on latest main. A transport bridge must move validated USER messages into an active actor generation and route its bounded replies back to the right connection, while preserving per-actor ownership, NET permission, cancellation, CONTROL priority, close semantics and backpressure. Do not call `self.send` a network send or run the Rust echo loop in place of a guest.
+
+See [release gates](docs/DEMO_RELEASE_GATES.md) and [machine-readable status](demo-status.json). Legacy `.ores` remains supported by the language for older fixtures, but this repo's new source inventory is **`.atto` only**. Keep the existing repository identity during migration.

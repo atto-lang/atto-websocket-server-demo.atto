@@ -1,0 +1,26 @@
+// One executable entry; compiler-backed execution required, exit code 42.
+import fnc {allowed_echo_bytes, echo_text} from "../src/echo_contract.atto";
+
+pub fnc main(): int {
+  val text = allowed_echo_bytes(1, 40, 1024);
+  val binary = allowed_echo_bytes(2, 2, 1024);
+  val empty_text = allowed_echo_bytes(1, 0, 1024);
+  val ping = allowed_echo_bytes(9, 0, 1024);
+  val close = allowed_echo_bytes(8, 0, 1024);
+  val continuation = allowed_echo_bytes(0, 4, 1024);
+  val too_large = allowed_echo_bytes(2, 1025, 1024);
+  val negative = allowed_echo_bytes(1, -1, 1024);
+  val bad_limit = allowed_echo_bytes(1, 1, 65537);
+
+  if !text.is_ok() { return 11; }
+  if !binary.is_ok() { return 12; }
+  if !empty_text.is_ok() { return 13; }
+  if ping.is_ok() { return 14; }
+  if close.is_ok() { return 15; }
+  if continuation.is_ok() { return 16; }
+  if too_large.is_ok() { return 17; }
+  if negative.is_ok() { return 18; }
+  if bad_limit.is_ok() { return 19; }
+  if echo_text("atto-echo") neq "atto-echo" { return 20; }
+  return text.unwrap() + binary.unwrap();
+}

@@ -1,0 +1,26 @@
+name: WebSocket Rust wire and loopback tests (host only)
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  wire:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Rust RFC6455 host tests and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target
+          rustc --edition=2021 --deny warnings --test native/ws_echo.rs -o target/ws-tests
+          target/ws-tests --nocapture
+          rustc --edition=2021 --deny warnings native/ws_echo.rs -o target/ws-echo
+          echo 'HOST_RFC6455_ONLY; AttoLang guest and AOT NOT_EXECUTED'

@@ -1,0 +1,16 @@
+// AttoLang mailbox example, not a WebSocket transport binding.
+// Source-authored: this actor has NOT been checked/executed at this PR head.
+// A runtime-owned, generation-fenced adapter must deliver only validated text.
+import fnc {echo_text} from "./echo_contract.atto";
+
+define actor EchoActor as
+  on_start(): void {
+    return;
+  }
+
+  receive(ActorMail<String> mail): void {
+    // This is an ACTOR OUTPUT, NOT a WebSocket network write.
+    self.send(echo_text(mail.value));
+    return;
+  }
+end
