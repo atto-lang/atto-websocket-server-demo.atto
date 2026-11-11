@@ -28,3 +28,8 @@ jobs:
       - name: Audit native compiler executable path with mock-only negatives
         shell: bash
         run: bash ci/test-atto-compiler-path-guard.sh
+      - name: Verify source-hygiene workflow integrity and mutation resistance
+        shell: bash
+        run: |
+          bash ci/check-workflow-hygiene.sh
+          bash ci/test-workflow-hygiene.sh
