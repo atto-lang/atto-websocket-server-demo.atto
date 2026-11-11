@@ -554,7 +554,10 @@ mod tests{
                 2=>base.replace("\r\n\r\n","\r\nContent-Length: 0\r\n\r\n"),
                 3=>base.replace("\r\n\r\n","\r\nOrigin: https://evil.test\r\n\r\n"),
                 4=>base.replace("\r\n\r\n","\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"),
-                5=>base.replace(&format!("Host: 127.0.0.1:{}",address.port()),"Host: 127.0.0.1:9999"),
+                5=>{
+                    let original_host=format!("Host: 127.0.0.1:{}",address.port());
+                    base.replace(original_host.as_str(),"Host: 127.0.0.1:9999")
+                },
                 _=>base.replace("\r\n\r\n",&format!("\r\nOrigin: http://localhost:{}\r\n\r\n",address.port())),
             };
             let server=std::thread::spawn(move||{
