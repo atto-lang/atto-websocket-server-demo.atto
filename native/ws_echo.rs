@@ -207,7 +207,7 @@ fn handle(mut stream:TcpStream)->io::Result<()>{
             10=>{},
             0=>{
                 let Some((_,buf))=partial.as_mut() else {close(&mut stream,1002);return Ok(());};
-                if buf.len().checked_add(f.data.len()).is_none_or(|n|n>MAX_MESSAGE) {
+                if buf.len().checked_add(f.data.len()).map_or(true,|n|n>MAX_MESSAGE) {
                     close(&mut stream,1009);return Ok(());
                 }
                 buf.extend_from_slice(&f.data);
