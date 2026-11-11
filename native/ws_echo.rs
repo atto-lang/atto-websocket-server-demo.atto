@@ -128,6 +128,15 @@ fn read_upgrade_with_deadline(stream: &mut TcpStream, budget:Duration) -> io::Re
 #[derive(Debug,PartialEq,Eq)]
 struct Frame {fin:bool, opcode:u8, data:Vec<u8>}
 // Absolute per-frame deadline: trickling bytes must not reset the time budget.
+// All frames share a 30-second bound; continuation and interleaved CONTROL
+// frames may not extend a fragmented USER message's original deadline.
+fn frame_deadline(now: Instant, fragment_started: Option<Instant>) -> Instant {
+    let per_frame = now + Duration::from_secs(30);
+    match fragment_started {
+        Some(started) => std::cmp::min(per_frame, started + Duration::from_secs(30)),
+        None => per_frame,
+    }
+}
 struct FrameDeadlineReader<'a> {
     socket: &'a mut TcpStream,
     deadline: Instant,
@@ -213,7 +222,7 @@ fn handle(mut stream:TcpStream)->io::Result<()>{
         let parsed = {
             let mut limited = FrameDeadlineReader {
                 socket: &mut stream,
-                deadline: Instant::now() + Duration::from_secs(30),
+                deadline: frame_deadline(Instant::now(), fragment_started),
             };
             read_frame(&mut limited)
         };
@@ -444,5 +453,16 @@ mod tests{
         write_frame(&mut out,9,&[0;125]).unwrap();
         assert_eq!(out[0],0x89);
         assert_eq!(out[1],125);
+    }
+
+    #[test] fn fragmented_frames_and_control_traffic_do_not_refresh_budget() {
+        let started=Instant::now();
+        let twenty_later=started+Duration::from_secs(20);
+        let bound=frame_deadline(twenty_later,Some(started));
+        assert_eq!(bound,started+Duration::from_secs(30));
+        assert!(bound<twenty_later+Duration::from_secs(30));
+        assert_eq!(frame_deadline(started,None),started+Duration::from_secs(30));
+        let beyond=started+Duration::from_secs(40);
+        assert!(frame_deadline(beyond,Some(started))<beyond);
     }
 }
