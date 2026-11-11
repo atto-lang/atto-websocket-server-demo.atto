@@ -465,4 +465,32 @@ mod tests{
         let beyond=started+Duration::from_secs(40);
         assert!(frame_deadline(beyond,Some(started))<beyond);
     }
+
+    #[test] fn tcp_loopback_rejects_malformed_handshake() {
+        for variant in 0..5 {
+            let listener=TcpListener::bind("127.0.0.1:0").unwrap();
+            let address=listener.local_addr().unwrap();
+            let base=request(address.port());
+            let invalid=match variant {
+                0=>base.replace("GET /ws HTTP/1.1","POST /ws HTTP/1.1"),
+                1=>base.replace("Version: 13","Version: 8"),
+                2=>base.replace("\r\n\r\n","\r\nContent-Length: 0\r\n\r\n"),
+                3=>base.replace("\r\n\r\n","\r\nOrigin: https://evil.test\r\n\r\n"),
+                _=>base.replace("\r\n\r\n","\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"),
+            };
+            let server=std::thread::spawn(move||{
+                let (peer,_) = listener.accept().unwrap();
+                handle(peer).unwrap();
+            });
+            let mut peer=TcpStream::connect(address).unwrap();
+            peer.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+            peer.write_all(invalid.as_bytes()).unwrap();
+            let mut response=Vec::new();
+            peer.read_to_end(&mut response).unwrap();
+            assert!(response.starts_with(b"HTTP/1.1 400 Bad Request"),"variant={variant}");
+            assert!(!response.windows(b"Sec-WebSocket-Accept".len())
+                .any(|w|w==b"Sec-WebSocket-Accept"));
+            server.join().unwrap();
+        }
+    }
 }
