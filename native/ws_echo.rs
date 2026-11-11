@@ -1,7 +1,7 @@
 //! Dependency-free, localhost-only RFC 6455 echo harness.
 //! This exercises a Rust HOST transport, NOT an AttoLang actor or guest.
 use std::io::{self, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -193,7 +193,27 @@ fn write_frame(writer:&mut impl Write, opcode:u8, data:&[u8])->io::Result<()>{
     }
     writer.write_all(&h)?; writer.write_all(data)?; writer.flush()
 }
-fn close(writer:&mut impl Write,code:u16) {let _=write_frame(writer,8,&code.to_be_bytes());}
+// Best-effort protocol close. Half-close the write direction and briefly
+// drain pending unread bytes so Linux does not reset the TCP socket while the
+// peer is reading the close frame. Both the byte and wall-clock budgets are
+// bounded; this is a HOST transport operation, not an actor-carrier wait.
+fn close(stream:&mut TcpStream,code:u16) {
+    if write_frame(stream,8,&code.to_be_bytes()).is_err() {return;}
+    let _=stream.shutdown(Shutdown::Write);
+    let deadline=Instant::now()+Duration::from_millis(150);
+    let mut drained=0usize;
+    let mut scratch=[0u8;1024];
+    while drained<MAX_MESSAGE+16 {
+        let left=deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {break;}
+        if stream.set_read_timeout(Some(left)).is_err() {break;}
+        match stream.read(&mut scratch) {
+            Ok(0)=>break,
+            Ok(n)=>drained+=n,
+            Err(_)=>break,
+        }
+    }
+}
 // 1014 is reserved; 1005, 1006 and 1015 cannot appear in close frames.
 fn close_code_ok(c:u16)->bool {matches!(c,1000..=1003|1007..=1013|3000..=4999)}
 fn echo(writer:&mut impl Write,op:u8,data:&[u8])->Result<(),u16>{
