@@ -65,6 +65,7 @@ fn local_host(s: &str) -> bool {
     let Some((host,port))=s.rsplit_once(':') else {return false};
     (host=="localhost"||host=="127.0.0.1") && port.parse::<u16>().is_ok_and(|p|p>0)
 }
+#[cfg(test)]
 fn upgrade(request: &str) -> Result<String,&'static str> {
     upgrade_bound(request,None)
 }
