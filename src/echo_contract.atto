@@ -6,8 +6,8 @@ pub fnc allowed_echo_bytes(int opcode, int message_bytes, int max_message_bytes)
   if max_message_bytes > 65536 { return Err("message limit exceeds demo maximum"); }
   if message_bytes < 0 { return Err("negative message length"); }
   if message_bytes > max_message_bytes { return Err("message exceeds configured limit"); }
-  if opcode == 1 { return Ok(message_bytes); }
-  if opcode == 2 { return Ok(message_bytes); }
+  if opcode eq 1 { return Ok(message_bytes); }
+  if opcode eq 2 { return Ok(message_bytes); }
   return Err("not a validated TEXT or BINARY message");
 }
 
