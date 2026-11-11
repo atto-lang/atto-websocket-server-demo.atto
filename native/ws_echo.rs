@@ -4,7 +4,7 @@ use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const MAX_MESSAGE: usize = 65536;
 const MAX_CONNECTIONS: usize = 16;
@@ -85,6 +85,7 @@ fn upgrade(request: &str) -> Result<String,&'static str> {
             "sec-websocket-key"=>&mut key,
             "origin"=>&mut origin,
             "sec-websocket-extensions"|"sec-websocket-protocol"=>return Err("unsupported negotiation"),
+            "content-length"|"transfer-encoding"=>return Err("HTTP body framing not supported for upgrade"),
             _=>continue,
         };
         if slot.replace(val).is_some() {return Err("duplicate protected header");}
@@ -106,8 +107,14 @@ fn upgrade(request: &str) -> Result<String,&'static str> {
     Ok(b64(&sha1(&material)))
 }
 fn read_upgrade(stream: &mut TcpStream) -> io::Result<String> {
+    let deadline=Instant::now()+Duration::from_secs(10);
     let mut bytes=Vec::new();
     for _ in 0..8192 {
+        let remaining=deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(io::Error::new(io::ErrorKind::TimedOut,"handshake deadline exceeded"));
+        }
+        stream.set_read_timeout(Some(remaining))?;
         let mut b=[0u8;1]; stream.read_exact(&mut b)?; bytes.push(b[0]);
         if bytes.ends_with(b"\r\n\r\n") {
             return String::from_utf8(bytes).map_err(|_|io::Error::new(io::ErrorKind::InvalidData,"non-UTF8 header"));
@@ -131,9 +138,11 @@ fn read_frame(reader:&mut impl Read)->Result<Frame,u16>{
         },
         127=>{
             let mut b=[0u8;8]; reader.read_exact(&mut b).map_err(|_|1002)?;
+            if b[0]&128!=0 {return Err(1002);}
             let n=u64::from_be_bytes(b);
-            if n<=65535 {return Err(1002);}
-            return Err(1009); // demo's max message is 64 KiB
+            if n<=65535 {return Err(1002);} // reject nonminimal 64-bit length
+            if n>MAX_MESSAGE as u64 {return Err(1009);}
+            n as usize
         },
         _=>code,
     };
@@ -148,7 +157,11 @@ fn write_frame(writer:&mut impl Write, opcode:u8, data:&[u8])->io::Result<()>{
     if data.len()>MAX_MESSAGE {return Err(io::Error::new(io::ErrorKind::InvalidInput,"oversized reply"));}
     let mut h=vec![0x80|opcode];
     if data.len()<126 {h.push(data.len() as u8);}
-    else {h.push(126); h.extend_from_slice(&(data.len() as u16).to_be_bytes());}
+    else if data.len()<=u16::MAX as usize {
+        h.push(126); h.extend_from_slice(&(data.len() as u16).to_be_bytes());
+    } else {
+        h.push(127); h.extend_from_slice(&(data.len() as u64).to_be_bytes());
+    }
     writer.write_all(&h)?; writer.write_all(data)?; writer.flush()
 }
 fn close(writer:&mut impl Write,code:u16) {let _=write_frame(writer,8,&code.to_be_bytes());}
@@ -171,7 +184,11 @@ fn handle(mut stream:TcpStream)->io::Result<()>{
     stream.write_all(format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n").as_bytes())?;
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
     let mut partial:Option<(u8,Vec<u8>)>=None;
+    let mut fragment_started:Option<Instant>=None;
     loop {
+        if fragment_started.is_some_and(|start|start.elapsed()>=Duration::from_secs(30)) {
+            close(&mut stream,1008);return Ok(());
+        }
         let f=match read_frame(&mut stream){Ok(f)=>f,Err(code)=>{close(&mut stream,code);return Ok(());}};
         match f.opcode {
             8=>{
@@ -193,6 +210,7 @@ fn handle(mut stream:TcpStream)->io::Result<()>{
                 buf.extend_from_slice(&f.data);
                 if f.fin {
                     let (op,data)=partial.take().unwrap();
+                    fragment_started=None;
                     if let Err(code)=echo(&mut stream,op,&data){close(&mut stream,code);return Ok(());}
                 }
             },
@@ -200,7 +218,10 @@ fn handle(mut stream:TcpStream)->io::Result<()>{
                 if partial.is_some(){close(&mut stream,1002);return Ok(());}
                 if f.fin {
                     if let Err(code)=echo(&mut stream,f.opcode,&f.data){close(&mut stream,code);return Ok(());}
-                }else{partial=Some((f.opcode,f.data));}
+                }else{
+                    fragment_started=Some(Instant::now());
+                    partial=Some((f.opcode,f.data));
+                }
             },
             _=>unreachable!(),
         }
@@ -256,6 +277,8 @@ mod tests{
         assert!(upgrade(&q.replace("\r\n\r\n","\r\nOrigin: https://evil.test\r\n\r\n")).is_err());
         assert!(upgrade(&q.replace("\r\n\r\n","\r\nSec-WebSocket-Extensions: permessage-deflate\r\n\r\n")).is_err());
         assert!(upgrade(&q.replace("127.0.0.1:9001","evil.test")).is_err());
+        assert!(upgrade(&q.replace("\r\n\r\n","\r\nContent-Length: 0\r\n\r\n")).is_err());
+        assert!(upgrade(&q.replace("\r\n\r\n","\r\nTransfer-Encoding: chunked\r\n\r\n")).is_err());
     }
     #[test] fn frame_negative_cases(){
         assert_eq!(read_frame(&mut Cursor::new([0x81,1,b'x'])),Err(1002));
@@ -265,10 +288,63 @@ mod tests{
         assert_eq!(read_frame(&mut Cursor::new(masked(3,true,b"x"))),Err(1002));
         assert_eq!(read_frame(&mut Cursor::new([0x81,0xfe,0,125])),Err(1002));
         assert_eq!(read_frame(&mut Cursor::new([0x82,0xff,0,0,0,0,0,1,0,1])),Err(1009));
+        assert_eq!(read_frame(&mut Cursor::new([0x82,0xff,0x80,0,0,0,0,1,0,0])),Err(1002));
+        assert_eq!(read_frame(&mut Cursor::new([0x82,0xff,0,0,0,0,0,0,0,125])),Err(1002));
         assert_eq!(read_frame(&mut Cursor::new(masked(1,true,b"ok"))).unwrap().data,b"ok");
         assert_eq!(echo(&mut Vec::new(),1,&[255]),Err(1007));
         assert!(!close_code_ok(1005));assert!(!close_code_ok(2000));
     }
+
+    #[test] fn exact_64k_frame_encoding_and_masked_decoding(){
+        let data=vec![0x4du8;MAX_MESSAGE];
+        let mut output=Vec::new();
+        write_frame(&mut output,2,&data).unwrap();
+        assert_eq!(&output[..10],&[0x82,127,0,0,0,0,0,1,0,0]);
+        assert_eq!(&output[10..],data.as_slice());
+        let mask=[0x11u8,0x22,0x33,0x44];
+        let mut inbound=vec![0x82,255];
+        inbound.extend_from_slice(&(MAX_MESSAGE as u64).to_be_bytes());
+        inbound.extend_from_slice(&mask);
+        for (i,v) in data.iter().enumerate(){inbound.push(v^mask[i%4]);}
+        let frame=read_frame(&mut Cursor::new(inbound)).unwrap();
+        assert!(frame.fin);
+        assert_eq!(frame.opcode,2);
+        assert_eq!(frame.data,data);
+        assert!(write_frame(&mut Vec::new(),2,&vec![0;MAX_MESSAGE+1]).is_err());
+    }
+    #[test] fn invalid_peer_frame_causes_protocol_close(){
+        for (frame,expected) in [
+            (vec![0x81,1,b'x'],1002u16),
+            (masked(0,true,b"stray"),1002u16),
+            (masked(1,true,&[0xff]),1007u16),
+            (masked(8,true,&[0x03]),1002u16),
+        ] {
+            let listener=TcpListener::bind("127.0.0.1:0").unwrap();
+            let address=listener.local_addr().unwrap();
+            let server=std::thread::spawn(move||{
+                let (peer,_)=listener.accept().unwrap();
+                handle(peer).unwrap();
+            });
+            let mut peer=TcpStream::connect(address).unwrap();
+            peer.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+            peer.write_all(request(address.port()).as_bytes()).unwrap();
+            let mut header=Vec::new();
+            while !header.ends_with(b"\r\n\r\n"){
+                let mut one=[0u8;1];
+                peer.read_exact(&mut one).unwrap();
+                header.push(one[0]);
+                assert!(header.len()<1024);
+            }
+            assert!(header.starts_with(b"HTTP/1.1 101"));
+            peer.write_all(&frame).unwrap();
+            let mut close=[0u8;4];
+            peer.read_exact(&mut close).unwrap();
+            assert_eq!(&close[..2],&[0x88,2]);
+            assert_eq!(u16::from_be_bytes([close[2],close[3]]),expected);
+            server.join().unwrap();
+        }
+    }
+
     #[test] fn tcp_loopback_fragment_ping_echo_close(){
         let listener=TcpListener::bind("127.0.0.1:0").unwrap();
         let addr=listener.local_addr().unwrap();
