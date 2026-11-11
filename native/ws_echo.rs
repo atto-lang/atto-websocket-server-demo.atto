@@ -107,7 +107,10 @@ fn upgrade(request: &str) -> Result<String,&'static str> {
     Ok(b64(&sha1(&material)))
 }
 fn read_upgrade(stream: &mut TcpStream) -> io::Result<String> {
-    let deadline=Instant::now()+Duration::from_secs(10);
+    read_upgrade_with_deadline(stream,Duration::from_secs(10))
+}
+fn read_upgrade_with_deadline(stream: &mut TcpStream, budget:Duration) -> io::Result<String> {
+    let deadline=Instant::now()+budget;
     let mut bytes=Vec::new();
     for _ in 0..8192 {
         let remaining=deadline.saturating_duration_since(Instant::now());
@@ -293,6 +296,19 @@ mod tests{
         assert_eq!(read_frame(&mut Cursor::new(masked(1,true,b"ok"))).unwrap().data,b"ok");
         assert_eq!(echo(&mut Vec::new(),1,&[255]),Err(1007));
         assert!(!close_code_ok(1005));assert!(!close_code_ok(2000));
+    }
+
+
+    #[test] fn stalled_handshake_obeys_absolute_deadline(){
+        let listener=TcpListener::bind("127.0.0.1:0").unwrap();
+        let address=listener.local_addr().unwrap();
+        let peer=TcpStream::connect(address).unwrap();
+        let (mut accepted,_)=listener.accept().unwrap();
+        peer.set_nodelay(true).unwrap();
+        let start=Instant::now();
+        let error=read_upgrade_with_deadline(&mut accepted,Duration::from_millis(200)).unwrap_err();
+        assert!(matches!(error.kind(),io::ErrorKind::TimedOut|io::ErrorKind::WouldBlock));
+        assert!(start.elapsed()<Duration::from_secs(3));
     }
 
     #[test] fn exact_64k_frame_encoding_and_masked_decoding(){
