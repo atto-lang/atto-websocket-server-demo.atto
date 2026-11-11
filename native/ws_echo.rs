@@ -165,6 +165,11 @@ fn read_frame(reader:&mut impl Read)->Result<Frame,u16>{
     let fin=h[0]&128!=0; let opcode=h[0]&15;
     if !matches!(opcode,0|1|2|8|9|10) {return Err(1002);}
     let code=(h[1]&127) as usize;
+    // RFC 6455 control frames must be FIN and use the seven-bit payload
+    // length directly. Reject extended encodings before reading their length
+    // bytes; malformed control frames must close with protocol error 1002,
+    // never size-policy close 1009.
+    if opcode>=8 && (!fin || code>125) {return Err(1002);}
     let len=match code {
         126=>{
             let mut b=[0u8;2]; reader.read_exact(&mut b).map_err(|_|1002u16)?;
@@ -189,6 +194,11 @@ fn read_frame(reader:&mut impl Read)->Result<Frame,u16>{
     Ok(Frame{fin,opcode,data})
 }
 fn write_frame(writer:&mut impl Write, opcode:u8, data:&[u8])->io::Result<()>{
+    // Host-generated frames never use continuation, unassigned opcodes,
+    // fragmented control or an unvalidated RSV bit.
+    if !matches!(opcode,1|2|8|9|10) {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput,"invalid outbound opcode"));
+    }
     if data.len()>MAX_MESSAGE || (opcode>=8 && data.len()>125) {
         return Err(io::Error::new(io::ErrorKind::InvalidInput,"oversized outbound frame"));
     }
@@ -369,6 +379,10 @@ mod tests{
         let mut rsv=masked(1,true,b"x");rsv[0]|=0x40;
         assert_eq!(read_frame(&mut Cursor::new(rsv)),Err(1002));
         assert_eq!(read_frame(&mut Cursor::new(masked(9,false,b"x"))),Err(1002));
+        // 64-bit length with an oversized value on PING is a protocol error,
+        // not the application-defined 1009 maximum-message error.
+        assert_eq!(read_frame(&mut Cursor::new([0x89,0xff,0,0,0,0,0,1,0,1])),Err(1002));
+        assert_eq!(read_frame(&mut Cursor::new([0x8a,0xfe,0,126])),Err(1002));
         assert_eq!(read_frame(&mut Cursor::new(masked(3,true,b"x"))),Err(1002));
         assert_eq!(read_frame(&mut Cursor::new([0x81,0xfe,0,125])),Err(1002));
         assert_eq!(read_frame(&mut Cursor::new([0x82,0xff,0,0,0,0,0,1,0,1])),Err(1009));
@@ -508,6 +522,9 @@ mod tests{
     #[test] fn control_frame_writes_remain_bounded() {
         let mut out=Vec::new();
         assert!(write_frame(&mut out,9,&[0;126]).is_err());
+        for invalid_opcode in [0,3,7,11,15,0x80,0xff] {
+            assert!(write_frame(&mut out,invalid_opcode,b"bad").is_err());
+        }
         assert!(out.is_empty());
         write_frame(&mut out,9,&[0;125]).unwrap();
         assert_eq!(out[0],0x89);
