@@ -1,6 +1,6 @@
 # AttoLang WebSocket echo demo
 
-**Status: source-authored, guest-to-wire integration unverified.** This repository now contains canonical `.atto` echo contract, actor and guest acceptance test sources, alongside a separate dependency-free Rust loopback RFC 6455 transport harness. These are **two separate execution tiers**: a working Rust transport, even if its tests pass, does **not** prove a compiled AttoLang actor handles a WebSocket connection.
+**Status: source-authored, guest-to-wire integration unverified.** This repository now contains canonical `.atto` echo contract, actor and guest acceptance test sources, alongside a separate dependency-free Rust loopback RFC 6455 transport harness. These are **two separate execution tiers**: passing Rust host-transport tests would **not** prove a compiled AttoLang actor handles a WebSocket connection.
 
 ## Components
 
@@ -28,7 +28,7 @@ Binds **only** to 127.0.0.1, port 9001; never expose this demo to a public netwo
 EXPECTED_DEMO_SHA="$(git rev-parse HEAD)" \
 EXPECTED_DEMO_TREE="$(git rev-parse HEAD^{tree})" \
 ATTO_COMPILER=/absolute/path/to/approved/oreslang-compiler \
-ATTO_COMPILER_SHA256=<verified-64-lowercase-hex-digest> \
+ATTO_COMPILER_SHA256="PASTE_APPROVED_64_CHARACTER_LOWERCASE_SHA256" \
 ATTO_COMPILER_SOURCE_SHA="$(cat COMPILER_REF)" \
 bash ci/run-atto-guest-acceptance.sh
 ```
