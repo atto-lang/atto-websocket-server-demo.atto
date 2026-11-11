@@ -66,6 +66,9 @@ fn local_host(s: &str) -> bool {
     (host=="localhost"||host=="127.0.0.1") && port.parse::<u16>().is_ok_and(|p|p>0)
 }
 fn upgrade(request: &str) -> Result<String,&'static str> {
+    upgrade_bound(request,None)
+}
+fn upgrade_bound(request: &str, listener_port: Option<u16>) -> Result<String,&'static str> {
     if !request.ends_with("\r\n\r\n") {return Err("incomplete upgrade");}
     let mut lines=request[..request.len()-4].split("\r\n");
     if lines.next()!=Some("GET /ws HTTP/1.1") {return Err("only GET /ws HTTP/1.1");}
@@ -90,7 +93,11 @@ fn upgrade(request: &str) -> Result<String,&'static str> {
         };
         if slot.replace(val).is_some() {return Err("duplicate protected header");}
     }
-    if !host.is_some_and(local_host) {return Err("nonlocal Host");}
+    let host=host.ok_or("missing Host")?;
+    if !local_host(host) {return Err("nonlocal Host");}
+    if listener_port.is_some_and(|port| {
+        host.rsplit_once(':').and_then(|(_,p)|p.parse::<u16>().ok())!=Some(port)
+    }) {return Err("Host does not match listener port");}
     if !up.is_some_and(|s:&str|s.eq_ignore_ascii_case("websocket")) {return Err("invalid Upgrade");}
     if !conn.is_some_and(|s:&str|s.split(',').any(|v|v.trim().eq_ignore_ascii_case("upgrade"))) {
         return Err("invalid Connection");
@@ -98,7 +105,7 @@ fn upgrade(request: &str) -> Result<String,&'static str> {
     if version!=Some("13") {return Err("unsupported version");}
     if origin.is_some_and(|s:&str|{
         let Some(authority)=s.strip_prefix("http://").or_else(||s.strip_prefix("https://")) else{return true};
-        !local_host(authority)
+        !local_host(authority)||authority!=host
     }) {return Err("cross-origin denied");}
     let key=key.ok_or("missing key")?;
     if !valid_key(key) {return Err("invalid key");}
@@ -223,7 +230,8 @@ fn echo(writer:&mut impl Write,op:u8,data:&[u8])->Result<(),u16>{
 fn handle(mut stream:TcpStream)->io::Result<()>{
     stream.set_read_timeout(Some(Duration::from_secs(10)))?;
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
-    let accept=match read_upgrade(&mut stream).and_then(|s|upgrade(&s)
+    let bound_port=stream.local_addr()?.port();
+    let accept=match read_upgrade(&mut stream).and_then(|s|upgrade_bound(&s,Some(bound_port))
         .map_err(|msg|io::Error::new(io::ErrorKind::InvalidData,msg))) {
         Ok(v)=>v,
         Err(_)=>{
@@ -343,6 +351,9 @@ mod tests{
         assert!(upgrade(&q.replace("\r\n\r\n","\r\nOrigin: https://evil.test\r\n\r\n")).is_err());
         assert!(upgrade(&q.replace("\r\n\r\n","\r\nSec-WebSocket-Extensions: permessage-deflate\r\n\r\n")).is_err());
         assert!(upgrade(&q.replace("127.0.0.1:9001","evil.test")).is_err());
+        assert!(upgrade_bound(&q,Some(9002)).is_err());
+        assert!(upgrade(&q.replace("\r\n\r\n","\r\nOrigin: http://localhost:9001\r\n\r\n")).is_err());
+        assert!(upgrade(&q.replace("\r\n\r\n","\r\nOrigin: http://127.0.0.1:9001\r\n\r\n")).is_ok());
         assert!(upgrade(&q.replace("\r\n\r\n","\r\nContent-Length: 0\r\n\r\n")).is_err());
         assert!(upgrade(&q.replace("\r\n\r\n","\r\nTransfer-Encoding: chunked\r\n\r\n")).is_err());
     }
