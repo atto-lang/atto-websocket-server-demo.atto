@@ -1,6 +1,17 @@
 # WebSocket-to-AttoLang actor bridge v1 — integration target
 
-**Status: design contract / NOT_IMPLEMENTED in this demo.** This is a binding acceptance specification, not a claim that `define websocket actor` is executable on Java/Graal current main. Implement against [compiler PR #2061](https://github.com/ores-truffle-oreslang/oreslang-source.java/pull/2061) / [issue #2051](https://github.com/ores-truffle-oreslang/oreslang-source.java/issues/2051), which already establish the canonical `WebSocketActorConnectionLease` and a host-to-actor mailbox path in their unmerged draft. Never fork a second ownership ledger.
+**Status: Java runtime adapter AUTHORING IN PROGRESS / NOT_EXECUTED; demo guest binding NOT_IMPLEMENTED.** This is a binding acceptance specification, not a claim that `define websocket actor` is executable on Java/Graal current main. Implement against [compiler PR #2061](https://github.com/ores-truffle-oreslang/oreslang-source.java/pull/2061) / [issue #2051](https://github.com/ores-truffle-oreslang/oreslang-source.java/issues/2051), which already establish the canonical `WebSocketActorConnectionLease` and a host-to-actor mailbox path in their unmerged draft. Never fork a second ownership ledger.
+
+## Java runtime implementation progress (unmerged and NOT_EXECUTED)
+
+[Java transport PR #2061](https://github.com/ores-truffle-oreslang/oreslang-source.java/pull/2061) now authors two host-only/compiler-runtime entrypoints on `WebSocketLoopbackListener.Connection`:
+
+- `dispatchNextSourceActorText(handle, context, ActorRef<Object>)` decodes a complete, masked, reassembled and strictly validated TEXT message and uses `ActorRuntime.send` to admit an owned `String` into a genuine `spawnCodeActor` user mailbox. The source executor's normal `receiveActor` gets `ActorInboxMail`; the socket and delivery ticket never enter the guest. BINARY is deliberately refused until it has a typed buffer contract.
+- `relayNextSourceActorTextOutputAsync(handle, context, actor)` subscribes to **one** output from the actor's runtime-created `ActorOutputStream`, then stages a bounded native I/O task to send through the existing connection lease. A pending duplicate relay is rejected, and close cancels the pending read. Failures logically revoke the session and queue host-side close. The actor carrier never performs socket writes.
+
+JUnit localhost fixtures use a **synthetic host `ActorCodeExecutor`**, not executable `.atto` source. They test the real source-actor mailbox/parent-output infrastructure, duplicate relay admission, cancel-on-close, and rejection of host-behavior actors and BINARY payloads. They have **not run** in an admitted JDK25/Graal CI job. None of these fixtures proves that the compiler lowers `EchoActor.atto` or wires `self.send` to this transport.
+
+**Still mandatory:** run exact-head Java JUnit, compile the three actual `.atto` sources with the pinned executable, implement/compiler-authorize `EchoActor` creation and binding, guarantee **one actor output stream per connection** (or introduce a checked response-to-session correlation capability), prove STOP/hot-upgrade and independent guest-over-wire behavior, then NativeAOT parity. Until then, keep all `demo-status.json` verification flags false and PRs draft.
 
 ## Single-owner state machine
 
