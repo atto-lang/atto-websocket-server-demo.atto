@@ -22,3 +22,6 @@ jobs:
           test -z "$(git ls-files -- '*.ores')"
           test "$(git ls-files -- '*.atto' | wc -l | tr -d ' ')" -eq 3
           echo 'ATTO_SOURCE_BOUNDARY_PASS; no compiler or WebSocket guest executed'
+      - name: Run source-free carrier preflight negative tests (audit only)
+        shell: bash
+        run: bash ci/test-carrier-source-preflight.sh
