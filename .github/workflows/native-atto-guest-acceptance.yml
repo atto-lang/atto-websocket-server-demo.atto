@@ -1,0 +1,41 @@
+# Deny by default: real AttoLang guest requires independently approved private runner.
+# Never fetch compiler source or mirror this private demo across organizations.
+name: Native AttoLang WebSocket guest acceptance (private approved runner)
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  deny-unapproved:
+    if: ${{ !(github.repository == 'ores-truffle-oreslang/oreslang-websocket-server-demo.ores' && github.event.repository.private == true && vars.ATTO_PRIVATE_EPHEMERAL_RUNNER == 'true' && vars.ATTO_DEMO_APPROVED_SHA != '' && vars.ATTO_DEMO_APPROVED_SHA == (github.event.pull_request.head.sha || github.sha) && vars.ATTO_DEMO_APPROVED_TREE != '' && vars.ATTO_COMPILER_EXECUTABLE_PATH != '' && vars.ATTO_COMPILER_SHA256 != '' && vars.ATTO_COMPILER_SOURCE_SHA != '') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Reject unapproved compiler or exact head
+        shell: bash
+        run: |
+          echo "::error::AttoLang guest execution NOT_EXECUTED: independent exact-head/tree/compiler/digest/private-runner approval required"
+          exit 1
+  atto-guest:
+    if: ${{ github.repository == 'ores-truffle-oreslang/oreslang-websocket-server-demo.ores' && github.event.repository.private == true && vars.ATTO_PRIVATE_EPHEMERAL_RUNNER == 'true' && vars.ATTO_DEMO_APPROVED_SHA != '' && vars.ATTO_DEMO_APPROVED_SHA == (github.event.pull_request.head.sha || github.sha) && vars.ATTO_DEMO_APPROVED_TREE != '' && vars.ATTO_COMPILER_EXECUTABLE_PATH != '' && vars.ATTO_COMPILER_SHA256 != '' && vars.ATTO_COMPILER_SOURCE_SHA != '' }}
+    runs-on: [self-hosted, linux, x64, oreslang-private-ephemeral]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact approved .atto demo head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Execute real compiler and exit-42 guest (no host simulator)
+        shell: bash
+        env:
+          EXPECTED_DEMO_SHA: ${{ vars.ATTO_DEMO_APPROVED_SHA }}
+          EXPECTED_DEMO_TREE: ${{ vars.ATTO_DEMO_APPROVED_TREE }}
+          ATTO_COMPILER: ${{ vars.ATTO_COMPILER_EXECUTABLE_PATH }}
+          ATTO_COMPILER_SHA256: ${{ vars.ATTO_COMPILER_SHA256 }}
+          ATTO_COMPILER_SOURCE_SHA: ${{ vars.ATTO_COMPILER_SOURCE_SHA }}
+        run: bash ci/run-atto-guest-acceptance.sh

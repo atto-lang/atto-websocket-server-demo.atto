@@ -39,4 +39,10 @@ Only run with an independently approved preinstalled compiler outside this check
 
 The compiler's `define websocket actor`, `WebSocketMessage`, and opaque WebSocket connection APIs are design targets, **not proved executable** on latest main. A transport bridge must move validated USER messages into an active actor generation and route its bounded replies back to the right connection, while preserving per-actor ownership, NET permission, cancellation, CONTROL priority, close semantics and backpressure. Do not call `self.send` a network send or run the Rust echo loop in place of a guest.
 
-See [release gates](docs/DEMO_RELEASE_GATES.md) and [machine-readable status](demo-status.json). Legacy `.ores` remains supported by the language for older fixtures, but this repo's new source inventory is **`.atto` only**. Keep the existing repository identity during migration.
+See [actor bridge contract](docs/WEBSOCKET_ACTOR_BRIDGE_V1.md), [release gates](docs/DEMO_RELEASE_GATES.md) and [machine-readable status](demo-status.json). Legacy `.ores` remains supported by the language for older fixtures, but this repo's new source inventory is **`.atto` only**. Keep the existing repository identity during migration.
+
+## Runtime integration dependency and protected guest CI
+
+Java/Graal compiler [issue #2051](https://github.com/ores-truffle-oreslang/oreslang-source.java/issues/2051) and [draft transport PR #2061](https://github.com/ores-truffle-oreslang/oreslang-source.java/pull/2061) contain the existing canonical actor-connection ownership work. **Do not implement a competing actor-lease model in this demo.** The first real guest-to-wire milestone is to integrate with that runtime's generation-fenced transport and produce an actual compiled `.atto` actor loopback receipt. The Java transport draft is not merged or independently validated.
+
+`.github/workflows/native-atto-guest-acceptance.yml` intentionally fails closed unless a reviewer has approved this exact demo commit, tree and a preinstalled compiler on a private ephemeral runner. Its runner authorization and hash variables are described in [release gates](docs/DEMO_RELEASE_GATES.md). Never run this private compiler from a public runner, and never treat a skipped/zero-step job as guest verification.

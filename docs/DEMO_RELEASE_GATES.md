@@ -19,3 +19,20 @@ Handshake: absent/duplicate/malformed headers, invalid key/version, unsupported 
 Compiler latest-main source pin at authoring: `6d8eb70048eafc9a84c5aebe9c1bb06104f16e76`; this is **not** a claim the binary was built or executed. A separate executable digest must be explicitly supplied. Runner `steps=[]`, `null`, runner-null, queued or skipped => **NOT_EXECUTED**. Do not merge solely on host-only or source-inspection receipts. Require independent semantic approval and pin head SHA for merge.
 
 Do not mirror private repo/compiler trees to an alternate org without independently approved secure destination and source/carrier permissions. No automatic cross-org checkout token, Git tree transfer, or implicit trust bypass is installed.
+
+## Protected native guest CI (requires independent approval)
+
+The `native-atto-guest-acceptance.yml` workflow uses immutable PR-head checkout and requires all repository variables below before the private job can be admitted:
+
+- `ATTO_PRIVATE_EPHEMERAL_RUNNER=true` and an authorized runner labeled `oreslang-private-ephemeral` in the **source organization**;
+- `ATTO_DEMO_APPROVED_SHA`: independently reviewed exact 40-character demo head;
+- `ATTO_DEMO_APPROVED_TREE`: Git commit's actual root **tree** SHA, not the commit SHA;
+- `ATTO_COMPILER_EXECUTABLE_PATH`: absolute preinstalled approved binary path, outside the checkout;
+- `ATTO_COMPILER_SHA256`: verified lowercase 64-character executable checksum;
+- `ATTO_COMPILER_SOURCE_SHA`: approved compiler commit matching `COMPILER_REF`.
+
+Missing approvals deliberately trigger a denial job. A positive gate is only accepted when the **real compiler** typechecks all three `.atto` files and the test's `main` exits 42 at the exact reviewed head. The source organization's zero-step Actions currently provide no such receipt.
+
+## Existing runtime work
+
+Use [Java/Graal actor-owned WebSocket transport PR #2061](https://github.com/ores-truffle-oreslang/oreslang-source.java/pull/2061) and [compiler issue #2051](https://github.com/ores-truffle-oreslang/oreslang-source.java/issues/2051) as the one canonical owner/lease foundation. The host-only Rust harness here is an independent protocol oracle, not a candidate new Java actor authority. [Bridge contract](WEBSOCKET_ACTOR_BRIDGE_V1.md) describes binding, negative tests, and promotion criteria. No cross-org transfer is authorized by these docs.
