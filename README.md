@@ -2,6 +2,10 @@
 
 WebSocket server example demonstrating asynchronous connections and actors in AttoLang.
 
+## Canonical naming and documentation migration
+
+[AttoLang](https://github.com/atto-lang) is the sole canonical project name; configure repository remotes as `https://github.com/atto-lang/atto-websocket-server-demo.atto.git` and refer to `.atto` in new examples. [atto-spec](https://github.com/atto-lang/atto-spec) owns normative grammar, ownership, lifetime, effects and actor contracts; [atto-platform-conformance](https://github.com/atto-lang/atto-platform-conformance) tracks executed verification. Distinguish design proposals from tested compiler support and do not advertise zero-step CI as guest conformance.
+
 ## Demonstration focus
 
 WebSocket connections, channel events, and message handling.
@@ -32,6 +36,6 @@ This README describes the demonstration's intended purpose. Current executable c
 
 **Security and portability boundary:** Reject invalid frames/origins and overlarge payloads, enforce backpressure, prevent message-to-closure transport and handle disconnect/cancel races.
 
-AttoLang is the public name; preserve existing Oreslang/.ores compatibility and use canonical .atto for new portable library source. This README defines scope, not feature readiness.
+AttoLang is the canonical project identity; all new examples and documentation use `.atto` and the `atto-lang` organization. This README defines scope, not feature readiness.
 
 **Acceptance:** name exact source SHA/tree, runtime/toolchain, positive and negative checks and execution receipt before claiming support. Host-only tests and empty CI steps do not prove guest execution.
