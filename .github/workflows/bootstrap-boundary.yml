@@ -1,0 +1,27 @@
+name: WebSocket bootstrap boundary
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bootstrap:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Require explicit promotion before executable guest source lands
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq '**Status: empty-demo bootstrap.**' README.md
+          grep -Fq 'No actual WebSocket listener' README.md
+          test -z "$(find . -path ./.git -prune -o -type l -print -quit)"
+          if find . -path ./.git -prune -o -type f -name '*.ores' -print -quit | grep -q .; then
+            echo 'Native guest source was added while README still declares an empty bootstrap.' >&2
+            exit 1
+          fi
+          echo 'BOOTSTRAP_BOUNDARY_PASS; listener and guest execution remain NOT_EXECUTED.'
