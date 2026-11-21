@@ -172,11 +172,15 @@ fn validate_claims(fields: &BTreeMap<String, Value>, guest_count: usize) -> Resu
     if compiler && !has_guest || ci && !compiler {
         return Err("compiler and exact-head CI claim dependency violated".into());
     }
-    if fields.get("status") != Some(&Value::Text("bootstrap".into())) ||
-        has_guest || compiler || ci || listener || frames {
-        return Err("bootstrap cannot claim promoted or executed WebSocket support".into());
+    if compiler || ci || listener || frames {
+        return Err("unverified WebSocket compilation, CI or wire claims are forbidden".into());
     }
-    Ok(())
+    match fields.get("status") {
+        Some(Value::Text(status)) if status == "bootstrap" && !has_guest => Ok(()),
+        Some(Value::Text(status)) if status == "source-authored" && has_guest
+            && guest_count >= 3 => Ok(()),
+        _ => Err("status requires an exact matching unexecuted source maturity tier".into()),
+    }
 }
 
 fn tracked_guest_count(root: &Path) -> Result<usize, String> {
@@ -239,6 +243,33 @@ mod tests {
     #[test]
     fn accepts_current_bootstrap_claim() {
         validate_claims(&parse_status(valid()).unwrap(), 0).unwrap();
+    }
+
+    #[test]
+    fn source_authored_requires_tracked_ores_but_cannot_claim_execution() {
+        let authored = valid()
+            .replace(r#""status":"bootstrap""#, r#""status":"source-authored""#)
+            .replace(r#""native_guest_present":false"#,
+                     r#""native_guest_present":true"#);
+        assert!(validate_claims(&parse_status(&authored).unwrap(), 3).is_ok());
+        assert!(validate_claims(&parse_status(&authored).unwrap(), 2).is_err());
+        assert!(validate_claims(&parse_status(&authored).unwrap(), 0).is_err());
+        assert!(validate_claims(&parse_status(&authored).unwrap(), 1).is_err());
+        let promoted = authored.replace(
+            r#""compiler_execution_verified":false"#,
+            r#""compiler_execution_verified":true"#,
+        );
+        assert!(validate_claims(&parse_status(&promoted).unwrap(), 3).is_err());
+        let fake_wire = authored.replace(
+            r#""network_listener_verified":false"#,
+            r#""network_listener_verified":true"#,
+        );
+        assert!(validate_claims(&parse_status(&fake_wire).unwrap(), 3).is_err());
+        let fake_ci = authored.replace(
+            r#""exact_head_ci_verified":false"#,
+            r#""exact_head_ci_verified":true"#,
+        );
+        assert!(validate_claims(&parse_status(&fake_ci).unwrap(), 3).is_err());
     }
 
     #[test]

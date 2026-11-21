@@ -13,15 +13,39 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Require explicit promotion before executable guest source lands
+      - name: Require Oreslang source with strict NOT_EXECUTED provenance
         shell: bash
         run: |
           set -euo pipefail
-          grep -Fq '**Status: empty-demo bootstrap.**' README.md
-          grep -Fq 'No actual WebSocket listener' README.md
+          grep -Fq '**Status: source-authored, NOT_EXECUTED.**' README.md
+          grep -Fq 'No actual WebSocket listener has been executed' README.md
           test -z "$(find . -path ./.git -prune -o -type l -print -quit)"
-          if find . -path ./.git -prune -o -type f -name '*.ores' -print -quit | grep -q .; then
-            echo 'Native guest source was added while README still declares an empty bootstrap.' >&2
+          test -f src/echo_contract.ores
+          test -f src/echo_actor.ores
+          test -f tests/echo_contract_test.ores
+          test -f COMPILER_REF
+          test "$(wc -l < COMPILER_REF)" -eq 1
+          test "$(wc -c < COMPILER_REF)" -eq 41
+          grep -Eq '^[0-9a-f]{40}          grep -Fq 'define actor EchoActor as' src/echo_actor.ores
+          grep -Fq 'pub fnc main(): int' tests/echo_contract_test.ores
+          if grep -Eq '^[[:space:]]*(pub[[:space:]]+)?(fnc|routine)[[:space:]]+main[[:space:]]*\\(' src/echo_contract.ores src/echo_actor.ores; then
+            echo 'POLICY_FAILURE: library or actor defines a competing main()' >&2
             exit 1
           fi
-          echo 'BOOTSTRAP_BOUNDARY_PASS; listener and guest execution remain NOT_EXECUTED.'
+          count="$(git ls-files -- '*.ores' | wc -l | tr -d ' ')"
+          test "$count" = 3
+          test -z "$(git ls-files -- '*.java' '*.class')"
+          echo 'SOURCE_AUTHORED_BOUNDARY_PASS; .ores source exists, compiler and wire execution remain NOT_EXECUTED.'
+ COMPILER_REF
+          test -f ci/run-ores-guest-acceptance.sh
+          test -f .github/workflows/native-ores-guest-acceptance.yml
+          grep -Fq 'define actor EchoActor as' src/echo_actor.ores
+          grep -Fq 'pub fnc main(): int' tests/echo_contract_test.ores
+          if grep -Eq '^[[:space:]]*(pub[[:space:]]+)?(fnc|routine)[[:space:]]+main[[:space:]]*\\(' src/echo_contract.ores src/echo_actor.ores; then
+            echo 'POLICY_FAILURE: library or actor defines a competing main()' >&2
+            exit 1
+          fi
+          count="$(git ls-files -- '*.ores' | wc -l | tr -d ' ')"
+          test "$count" = 3
+          test -z "$(git ls-files -- '*.java' '*.class')"
+          echo 'SOURCE_AUTHORED_BOUNDARY_PASS; .ores source exists, compiler and wire execution remain NOT_EXECUTED.'

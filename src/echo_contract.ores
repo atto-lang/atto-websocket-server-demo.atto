@@ -1,0 +1,30 @@
+// Oreslang WebSocket echo DATA contract, not a socket adapter.
+// STATUS: SOURCE_AUTHORED / NOT_EXECUTED by a pinned Oreslang compiler.
+//
+// Host WebSocket framing MUST first validate masking, fragmentation,
+// UTF-8 for text, length limits, close/control frames, actor-generation
+// authorization, and NET permission. This module handles only a validated
+// USER message. It must never reinterpret CONTROL frames as USER payload.
+pub fnc allowed_echo_bytes(int opcode, int message_bytes,
+                           int max_message_bytes): Result<int, String> {
+  if max_message_bytes < 1 || max_message_bytes > 65536; do
+    return Err("invalid bounded WebSocket message limit");
+  fi
+  if message_bytes < 0 || message_bytes > max_message_bytes; do
+    return Err("WebSocket USER message exceeds configured size");
+  fi
+  if !(opcode == 1 || opcode == 2); do
+    return Err("only validated text or binary USER messages may echo");
+  fi
+  return Ok(message_bytes);
+}
+
+// Already UTF-8 validated by the framing adapter.
+// No Java String/socket/transport object crosses this boundary.
+pub fnc echo_text(String text): String {
+  return text;
+}
+
+// This source is a linkable library: it deliberately defines NO main().
+// The only executable entry is tests/echo_contract_test.ores.
+// CI must type-check the real imported closure and require guest exit 42.
