@@ -41,3 +41,11 @@ This README describes the demonstration's intended purpose. Current executable c
 AttoLang is the canonical project identity; all new examples and documentation use `.atto` and the `atto-lang` organization. This README defines scope, not feature readiness.
 
 **Acceptance:** name exact source SHA/tree, runtime/toolchain, positive and negative checks and execution receipt before claiming support. Host-only tests and empty CI steps do not prove guest execution.
+
+## Legacy migration and verification gates
+
+The historical predecessor was `ores-truffle-oreslang/oreslang-websocket-server-demo.ores`. This repository is now maintained in `atto-lang`; a similarly named repository or imported history does not by itself establish preservation of the original numeric repository ID, source parity or compiler support. Preserve working legacy `.ores` inputs, old package names and CLI references until compatibility and replacement paths have been verified; new source follows the canonical `.atto` specification.
+
+Do not claim native full-duplex WebSocket support without real transport execution receipts. [atto-lang](https://github.com/atto-lang) owns language, tooling and portable examples/libraries; [atto-co](https://github.com/atto-co) owns separately governed hosted deployment, tenant infrastructure, registry, identity and billing. Any further original-ID transfer or managed-product carve-out requires separate owner authorization; no direct legacy-org move to atto-co is authorized by this document.
+
+Before an actual transfer, coordinate with the [migration issue](https://github.com/ores-truffle-oreslang/.github/issues/26) and authorized reviewers; inventory numeric ID, exact HEAD/tree, history, access, branch protections/rulesets, open PRs, packages, releases, CI/runners, secrets, webhooks, apps, Pages, dependencies and rollback ownership. Never disclose or mirror private code without authorization. After transfer, verify ID/tree/history and security controls, then execute exact-head tests before changing consumer references. Empty CI steps are NOT_EXECUTED; host-only checks are not compiled guest evidence.
