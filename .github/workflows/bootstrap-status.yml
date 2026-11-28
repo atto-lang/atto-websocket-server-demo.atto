@@ -1,6 +1,9 @@
-name: Bootstrap demo status gate
+# Structural-only maturity gate. Neither this workflow nor its Rust tests execute an Oreslang guest.
+name: Bootstrap demo status gate (structural only)
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,39 +16,18 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Validate maturity claims against repository contents
+      - name: Compile dependency-free Rust structural validator
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          data = json.loads(Path("demo-status.json").read_text(encoding="utf-8"))
-          required = {
-              "schema_version", "kind", "status", "native_guest_present",
-              "compiler_execution_verified", "exact_head_ci_verified",
-              "first_executable_milestone", "network_listener_verified", "frame_protocol_verified"
-          }
-          missing = required - data.keys()
-          if missing:
-              raise SystemExit(f"missing demo-status keys: {sorted(missing)}")
-          if data["schema_version"] != 1:
-              raise SystemExit("unsupported demo-status schema")
-          if data["kind"] != "websocket-server":
-              raise SystemExit("demo kind changed unexpectedly")
-          ores = [p for p in Path(".").rglob("*.ores") if ".git" not in p.parts]
-          if bool(ores) != bool(data["native_guest_present"]):
-              raise SystemExit(
-                  f"native_guest_present={data['native_guest_present']} but found {len(ores)} .ores files"
-              )
-          if data["compiler_execution_verified"] and not data["native_guest_present"]:
-              raise SystemExit("compiler execution cannot be verified without native guest source")
-          if data["exact_head_ci_verified"] and not data["compiler_execution_verified"]:
-              raise SystemExit("exact-head CI cannot imply guest verification before compiler execution")
-          if data["status"] == "bootstrap" and data["compiler_execution_verified"]:
-              raise SystemExit("bootstrap status cannot claim compiler execution")
-          print("BOOTSTRAP_STATUS_GATE_PASS")
-          print(f"native_guest_files={len(ores)}")
-          print("This validates repository claim consistency only; it does not execute Oreslang.")
-          PY
+          rustc --version
+          rustc --edition=2021 -D warnings ci/bootstrap_guard.rs -o "$RUNNER_TEMP/bootstrap-guard"
+          rustc --edition=2021 -D warnings --test ci/bootstrap_guard.rs -o "$RUNNER_TEMP/bootstrap-guard-tests"
+      - name: Test adversarial bootstrap policy cases (host only)
+        shell: bash
+        run: "$RUNNER_TEMP/bootstrap-guard-tests"
+      - name: Enforce exact-head bootstrap status and repository inventory
+        shell: bash
+        env:
+          EXPECTED_DEMO_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: "$RUNNER_TEMP/bootstrap-guard"
